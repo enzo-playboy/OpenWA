@@ -37,6 +37,12 @@ export class CadenceController {
     return this.cadenceService.findCadenceById(id);
   }
 
+  @Get('funnel-stats')
+  @ApiOperation({ summary: 'Obter estatísticas consolidadas e em tempo real do Funil de Leads' })
+  getFunnelStats() {
+    return this.cadenceService.getGlobalFunnelStats();
+  }
+
   @Get(':id/stats')
   @ApiOperation({ summary: 'Obter estatísticas de desempenho e conversão da cadência' })
   @ApiParam({ name: 'sessionId', description: 'ID da sessão do WhatsApp' })

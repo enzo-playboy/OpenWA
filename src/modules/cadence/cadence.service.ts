@@ -214,4 +214,40 @@ export class CadenceService {
     }
     return pausedAny;
   }
+
+  /**
+   * Estatísticas em tempo real do Funil de Vendas (Estratégia do Pequeno Sim)
+   */
+  async getGlobalFunnelStats() {
+    const totalLeads = await this.leadProgressRepository.count();
+    
+    const enviadas = await this.leadProgressRepository
+      .createQueryBuilder('p')
+      .where('p.currentStep > 0 OR p.lastSentAt IS NOT NULL')
+      .getCount();
+
+    const responded = await this.leadProgressRepository
+      .createQueryBuilder('p')
+      .where("p.status = 'replied_paused' OR p.lastReplyAt IS NOT NULL")
+      .getCount();
+
+    const proposta = await this.leadProgressRepository
+      .createQueryBuilder('p')
+      .where("p.status = 'completed' OR p.variables LIKE '%proposta%' OR p.variables LIKE '%high_ticket%'")
+      .getCount();
+
+    const fechados = await this.leadProgressRepository
+      .createQueryBuilder('p')
+      .where("p.variables LIKE '%fechado%' OR p.variables LIKE '%closed%' OR p.variables LIKE '%venda%'")
+      .getCount();
+
+    return {
+      prospectados: totalLeads,
+      enviados: enviadas,
+      responded: responded,
+      proposta: proposta,
+      fechados: fechados,
+      supabaseConfigured: this.supabaseSync.isConfigured(),
+    };
+  }
 }

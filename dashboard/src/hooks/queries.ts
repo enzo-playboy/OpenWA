@@ -35,6 +35,7 @@ export const queryKeys = {
   currentEngine: ['engines', 'current'] as const,
   statsOverview: ['stats', 'overview'] as const,
   statsMessages: (period: string) => ['stats', 'messages', period] as const,
+  statsFunnel: ['stats', 'funnel'] as const,
 };
 
 // ── Session Queries ───────────────────────────────────────────────────
@@ -367,5 +368,14 @@ export function useStatsMessagesQuery(period: StatsPeriod) {
     queryFn: () => statsApi.getMessages(period),
     staleTime: 30_000,
     retry: false,
+  });
+}
+
+export function useFunnelStatsQuery() {
+  return useQuery({
+    queryKey: queryKeys.statsFunnel,
+    queryFn: () => statsApi.getFunnel(),
+    staleTime: 10_000,
+    refetchInterval: 15_000, // real-time refresh every 15s
   });
 }

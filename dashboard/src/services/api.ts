@@ -1395,7 +1395,17 @@ export interface MessageStats {
   topChats: Array<{ chatId: string; chatName?: string | null; messageCount: number }>;
 }
 
+export interface FunnelStatsResponse {
+  prospectados: number;
+  enviados: number;
+  responded: number;
+  proposta: number;
+  fechados: number;
+  supabaseConfigured: boolean;
+}
+
 export const statsApi = {
   getOverview: () => request<OverviewStats>('/stats/overview'),
   getMessages: (period: StatsPeriod) => request<MessageStats>(`/stats/messages?period=${period}`),
+  getFunnel: (sessionId = 'default') => request<FunnelStatsResponse>(`/sessions/${sessionId}/cadences/funnel-stats`),
 };
