@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "OpenWA - Controle Sofia IA para WhatsApp Web",
+  "version": "1.0.0",
+  "description": "Controle em tempo real da IA Sofia direto na tela do WhatsApp Web. Pause ou ative o atendimento de qualquer conversa com um clique.",
+  "permissions": [
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "http://localhost:2785/*",
+    "http://127.0.0.1:2785/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

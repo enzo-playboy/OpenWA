@@ -64,7 +64,35 @@
     "messageTester": "Message Tester",
     "infrastructure": "Infrastructure",
     "plugins": "Plugins",
-    "logs": "Logs"
+    "logs": "Logs",
+    "kanban": "CRM Kanban"
+  },
+  "kanban": {
+    "title": "CRM Kanban",
+    "subtitle": "Manage your prospecting pipeline by dragging cards between columns",
+    "searchPlaceholder": "Search lead, company or phone...",
+    "addLead": "New Lead",
+    "editLead": "Edit Lead",
+    "total": "leads",
+    "engaged": "engaged",
+    "closed": "closed",
+    "emptyColumn": "No leads here",
+    "stages": {
+      "cold": "Cold Lead",
+      "contacted": "Contacted",
+      "engaged": "Engaged",
+      "proposal": "Proposal",
+      "closed": "Closed Won",
+      "archived": "Archived"
+    },
+    "fields": {
+      "name": "Contact Name",
+      "company": "Company",
+      "phone": "Phone / WhatsApp",
+      "stage": "Stage",
+      "tags": "Tags (comma separated)",
+      "notes": "Notes"
+    }
   },
   "chats": {
     "media": {

@@ -1,0 +1,47 @@
+#sofia-ia-toggle-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 4px 12px !important;
+  height: 32px !important;
+  border-radius: 16px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  border: none !important;
+  transition: all 0.2s ease-in-out !important;
+  margin: 0 10px !important;
+  user-select: none !important;
+  font-family: inherit !important;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25) !important;
+  z-index: 9999 !important;
+  position: relative !important;
+  white-space: nowrap !important;
+}
+
+#sofia-ia-toggle-btn.active {
+  background-color: #10b981 !important;
+  color: #ffffff !important;
+}
+
+#sofia-ia-toggle-btn.active:hover {
+  background-color: #059669 !important;
+}
+
+#sofia-ia-toggle-btn.paused {
+  background-color: #ef4444 !important;
+  color: #ffffff !important;
+}
+
+#sofia-ia-toggle-btn.paused:hover {
+  background-color: #dc2626 !important;
+}
+
+.sofia-ia-dot {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  background-color: #ffffff !important;
+  display: inline-block !important;
+}

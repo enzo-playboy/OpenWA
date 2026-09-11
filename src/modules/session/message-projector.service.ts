@@ -1,4 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
@@ -16,6 +17,8 @@ import { resolveFeatureFlags } from '../../config/feature-flags';
 import { StatusStoreService } from '../status-store/status-store.service';
 import { ChatMediaArchiveService } from '../chat-media/chat-media-archive.service';
 import { AutomationRulesService } from '../automation/automation-rules.service';
+import type { AiAgentService } from '../ai-agent/ai-agent.service';
+import type { CadenceService } from '../cadence/cadence.service';
 import { buildIncomingStatus } from '../status-store/incoming-status';
 import type { StatusUpdate } from '../status-store/entities/status-update.entity';
 import {
@@ -89,6 +92,9 @@ export class MessageProjector {
   // messageMutations queue, so the public enqueue path and the queued applies serialize on one chain.
   private readonly mutationProjector: MessageMutationProjector;
 
+  private aiAgentService?: AiAgentService;
+  private cadenceService?: CadenceService;
+
   constructor(
     @InjectRepository(Message, 'data')
     private readonly messageRepository: Repository<Message>,
@@ -109,6 +115,8 @@ export class MessageProjector {
     // Optional for the same reason. Absent simply means no autoreply rules are evaluated.
     @Optional()
     private readonly automationRules?: AutomationRulesService,
+    @Optional()
+    private readonly moduleRef?: ModuleRef,
   ) {
     this.mutationProjector = new MessageMutationProjector(
       this.messageRepository,
@@ -117,6 +125,30 @@ export class MessageProjector {
       this.messageMutations,
       this.logger,
     );
+  }
+
+  private resolveAiAgentService(): AiAgentService | undefined {
+    if (!this.aiAgentService && this.moduleRef) {
+      try {
+        const { AiAgentService } = require('../ai-agent/ai-agent.service') as typeof import('../ai-agent/ai-agent.service');
+        this.aiAgentService = this.moduleRef.get(AiAgentService, { strict: false });
+      } catch {
+        return undefined;
+      }
+    }
+    return this.aiAgentService;
+  }
+
+  private resolveCadenceService(): CadenceService | undefined {
+    if (!this.cadenceService && this.moduleRef) {
+      try {
+        const { CadenceService } = require('../cadence/cadence.service') as typeof import('../cadence/cadence.service');
+        this.cadenceService = this.moduleRef.get(CadenceService, { strict: false });
+      } catch {
+        return undefined;
+      }
+    }
+    return this.cadenceService;
   }
 
   /** Engine callback body, lifted out of initializeEngine so the wiring table stays readable. */
@@ -336,6 +368,43 @@ export class MessageProjector {
     // Autoreply rules ride the same at-most-once dispatch (the insert oracle above dedupes engine
     // re-fires) and stay fail-open like the webhook: a broken rule must never break the receive path.
     void this.automationRules?.evaluateInbound(id, finalMessage).catch(() => undefined);
+
+    // AI Agent & Cadence reply handling for inbound messages from leads
+    if (!finalMessage.fromMe) {
+      const chatId = typeof finalMessage.chatId === 'string' ? finalMessage.chatId : null;
+      if (chatId) {
+        // Pausa cadência caso o lead responda
+        const cadenceSvc = this.resolveCadenceService();
+        if (cadenceSvc) {
+          void cadenceSvc.handleInboundReply(id, chatId).catch(() => undefined);
+        }
+
+        // Resposta automática da IA (Sofia)
+        const aiAgentSvc = this.resolveAiAgentService();
+        if (aiAgentSvc) {
+          const isAudioType =
+            finalMessage.type === 'audio' ||
+            finalMessage.type === 'voice' ||
+            (typeof finalMessage.media?.mimetype === 'string' && finalMessage.media.mimetype.startsWith('audio/'));
+
+
+          if (isAudioType && finalMessage.media?.data) {
+            void aiAgentSvc
+              .handleInboundLeadAudioMessage(id, chatId, finalMessage.media.data, finalMessage.media.mimetype)
+              .catch((err: any) => {
+                this.logger.warn(`AI Agent audio handler failed: ${err instanceof Error ? err.message : String(err)}`);
+              });
+          } else {
+            const bodyText = typeof finalMessage.body === 'string' ? finalMessage.body : '';
+            void aiAgentSvc.handleInboundLeadMessage(id, chatId, bodyText).catch((err: any) => {
+              this.logger.warn(`AI Agent inbound handler failed: ${err instanceof Error ? err.message : String(err)}`);
+            });
+          }
+        }
+
+      }
+    }
+
     // Emit real-time event to WebSocket clients
     this.eventsGateway.emitMessage(id, finalMessage);
   }
@@ -447,6 +516,31 @@ export class MessageProjector {
         }
 
         void this.webhookService.dispatch(id, 'message.sent', finalMessage);
+
+        // Processa comandos remotos do celular para pausar/retomar a Sofia AI ou pausa automática por intervenção humana
+        const chatId = typeof outgoing.chatId === 'string' ? outgoing.chatId : null;
+        const bodyText = typeof outgoing.body === 'string' ? outgoing.body.trim().toLowerCase() : '';
+        const aiAgentSvc = this.resolveAiAgentService();
+        if (aiAgentSvc && chatId) {
+          if (bodyText === '#parar' || bodyText === '#pausar' || bodyText === '#stop' || bodyText === '#pausa') {
+            aiAgentSvc.togglePauseChat(chatId, true);
+            this.logger.log(`[Sofia AI] Pausada para o chat ${chatId} via comando remoto '${bodyText}'`);
+          } else if (bodyText === '#retomar' || bodyText === '#voltar' || bodyText === '#iniciar') {
+            aiAgentSvc.togglePauseChat(chatId, false);
+            this.logger.log(`[Sofia AI] Retomada para o chat ${chatId} via comando remoto '${bodyText}'`);
+          } else if (bodyText === '#pausar-tudo' || bodyText === '#desativar-sofia') {
+            void aiAgentSvc.updateConfig({ autoReplyOnLeadMessage: false });
+            this.logger.log(`[Sofia AI] Resposta automática GLOBAL DESATIVADA via comando remoto '${bodyText}'`);
+          } else if (bodyText === '#ativar-tudo' || bodyText === '#ativar-sofia') {
+            void aiAgentSvc.updateConfig({ autoReplyOnLeadMessage: true });
+            this.logger.log(`[Sofia AI] Resposta automática GLOBAL ATIVADA via comando remoto '${bodyText}'`);
+          } else if (!metadata?.isAiGenerated) {
+            // Pausa a Sofia automaticamente se um humano responder manualmente na conversa pelo celular
+            aiAgentSvc.togglePauseChat(chatId, true);
+            this.logger.log(`[Sofia AI] Pausada automaticamente para ${chatId} devido a intervenção humana.`);
+          }
+        }
+
         // Emit real-time event to WebSocket clients (as message.sent, not message.received)
         this.eventsGateway.emitMessageSent(id, finalMessage);
       })

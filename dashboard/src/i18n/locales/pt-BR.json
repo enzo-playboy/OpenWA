@@ -64,7 +64,35 @@
     "infrastructure": "Infraestrutura",
     "plugins": "Plugins",
     "logs": "Registros",
-    "templates": "Modelos"
+    "templates": "Modelos",
+    "kanban": "CRM Kanban"
+  },
+  "kanban": {
+    "title": "CRM Kanban",
+    "subtitle": "Gerencie o funil de prospecção arrastando os cards entre as colunas",
+    "searchPlaceholder": "Buscar lead, empresa ou telefone...",
+    "addLead": "Novo Lead",
+    "editLead": "Editar Lead",
+    "total": "leads",
+    "engaged": "engajados",
+    "closed": "fechados",
+    "emptyColumn": "Nenhum lead aqui",
+    "stages": {
+      "cold": "Lead Frio",
+      "contacted": "Em Contato",
+      "engaged": "Engajado",
+      "proposal": "Proposta",
+      "closed": "Fechado",
+      "archived": "Arquivado"
+    },
+    "fields": {
+      "name": "Nome do Contato",
+      "company": "Empresa",
+      "phone": "Telefone / WhatsApp",
+      "stage": "Etapa",
+      "tags": "Tags (separadas por vírgula)",
+      "notes": "Notas"
+    }
   },
   "chats": {
     "media": {

@@ -14,6 +14,15 @@ import { warnIfInsecureHttpUrl } from '../utils/urlSecurity';
 // too — otherwise split-origin deployments break. Empty VITE_API_URL → '/api'.
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
 export const API_BASE_URL = `${API_ORIGIN}/api`;
+
+export function getAuthHeaders(): Record<string, string> {
+  const apiKey = sessionStorage.getItem('openwa_api_key');
+  return {
+    'Content-Type': 'application/json',
+    ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+  };
+}
+
 // Warn (not refuse — would break dev + TLS-terminating-proxy) when the API origin is an
 // insecure http:// URL pointing at a non-localhost host (API keys sent in cleartext).
 if (API_ORIGIN) warnIfInsecureHttpUrl(API_ORIGIN, 'VITE_API_URL');

@@ -1,6 +1,6 @@
 // The env loader MUST be the first import: it populates process.env from .env / data/.env.generated
 // before any other module is evaluated, so modules that read process.env at import time (e.g. the
-// webhook Worker's @Processor connection) see the configured values rather than pre-dotenv defaults.
+// webhook Worker's @Processor connection) see the configured values rather than pre-dotenv defaults. 
 import './config/load-env';
 import { NestFactory } from '@nestjs/core';
 import { INestApplication, ShutdownSignal } from '@nestjs/common';

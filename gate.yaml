@@ -1,0 +1,12 @@
+# Configuração de Aprovação Humana (Human-in-the-Loop Gate)
+# Exigência crítica do projeto OpenWA
+
+version: 1
+gates:
+  - name: send_batch_messages
+    description: "Aprovação obrigatória antes de disparar mensagens no WhatsApp em lote"
+    required: true
+    action: "Apresentar lista de leads e textos no terminal/dashboard e aguardar confirmação do usuário"
+  - name: delete_database_records
+    description: "Confirmação antes de remover dados ou contatos"
+    required: true
