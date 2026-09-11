@@ -60,6 +60,41 @@ export class CadenceController {
     };
   }
 
+  @Get('supabase-leads')
+  @ApiOperation({ summary: 'Busca os leads diretamente do Supabase para o Kanban CRM (proxy backend)' })
+  getSupabaseLeads() {
+    return this.supabaseSync.fetchLeadsFromSupabase(1000);
+  }
+
+  @Post('supabase-leads/stage')
+  @ApiOperation({ summary: 'Atualiza a etapa (stage) de um lead no Supabase' })
+  updateSupabaseLeadStage(
+    @Body() body: { id?: string; phone?: string; stage: string },
+  ) {
+    return this.supabaseSync.updateLeadStageInSupabase(
+      { id: body.id, phone: body.phone },
+      body.stage,
+    );
+  }
+
+  @Post('supabase-leads/create')
+  @ApiOperation({ summary: 'Cria um novo lead no Supabase' })
+  createSupabaseLead(
+    @Body() body: { name?: string; phone: string; stage?: string; company?: string; tags?: string[]; notes?: string },
+  ) {
+    return this.supabaseSync.createLeadInSupabase({
+      phone: body.phone,
+      name: body.name ?? body.phone,
+      status: body.stage ?? 'cold',
+      metadata: {
+        stage: body.stage ?? 'cold',
+        company: body.company,
+        tags: body.tags,
+        notes: body.notes,
+      },
+    });
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obter detalhes de uma régua de cadência específica' })
   @ApiParam({ name: 'sessionId', description: 'ID da sessão do WhatsApp' })

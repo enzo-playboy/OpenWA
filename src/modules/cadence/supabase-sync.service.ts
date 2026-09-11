@@ -115,4 +115,98 @@ export class SupabaseSyncService {
       return false;
     }
   }
+
+  /**
+   * Atualizar stage e metadata do lead no Supabase pelo id ou telefone.
+   */
+  async updateLeadStageInSupabase(
+    identifier: { id?: string; phone?: string },
+    stage: string,
+  ): Promise<boolean> {
+    if (!this.isConfigured()) return false;
+
+    try {
+      const cleanPhone = identifier.phone ? identifier.phone.replace(/\D/g, '') : '';
+      const filter = identifier.id
+        ? `id=eq.${encodeURIComponent(identifier.id)}`
+        : `phone=eq.${encodeURIComponent(cleanPhone)}`;
+
+      // 1. Obter metadata atual para mesclar
+      const getUrl = `${this.supabaseUrl}/rest/v1/${this.leadsTable}?${filter}&select=metadata`;
+      const getRes = await fetch(getUrl, {
+        headers: { apikey: this.supabaseKey!, Authorization: `Bearer ${this.supabaseKey!}` },
+      });
+      let existingMeta: Record<string, unknown> = {};
+      if (getRes.ok) {
+        const rows = (await getRes.json()) as Array<{ metadata?: Record<string, unknown> }>;
+        if (rows[0]?.metadata) existingMeta = rows[0].metadata;
+      }
+
+      const updatedMeta = { ...existingMeta, stage };
+
+      // 2. PATCH status + metadata
+      const patchUrl = `${this.supabaseUrl}/rest/v1/${this.leadsTable}?${filter}`;
+      const res = await fetch(patchUrl, {
+        method: 'PATCH',
+        headers: {
+          apikey: this.supabaseKey!,
+          Authorization: `Bearer ${this.supabaseKey!}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          status: stage,
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+
+      return res.ok;
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to update lead stage in Supabase: ${errMsg}`);
+      return false;
+    }
+  }
+
+  /**
+   * Criar um novo lead no Supabase pelo backend.
+   */
+  async createLeadInSupabase(lead: Partial<SupabaseLead>): Promise<SupabaseLead | null> {
+    if (!this.isConfigured()) return null;
+
+    try {
+      const url = `${this.supabaseUrl}/rest/v1/${this.leadsTable}`;
+      const payload = {
+        phone: lead.phone,
+        name: lead.name ?? lead.phone,
+        status: lead.status ?? 'cold',
+        metadata: lead.metadata ?? {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          apikey: this.supabaseKey!,
+          Authorization: `Bearer ${this.supabaseKey!}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        this.logger.error(`Supabase POST createLead error: ${res.status}`);
+        return null;
+      }
+      const rows = (await res.json()) as SupabaseLead[];
+      return rows[0] ?? null;
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to create lead in Supabase: ${errMsg}`);
+      return null;
+    }
+  }
 }

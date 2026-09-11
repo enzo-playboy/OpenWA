@@ -97,14 +97,36 @@ function headers(key: string): Record<string, string> {
 
 export const supabaseKanban = {
   /**
-   * Busca todos os leads da tabela (sem filtro de status para mostrar todos os stages).
+   * Busca todos os leads da tabela via backend proxy `/api/sessions/default/cadences/supabase-leads`
+   * ou diretamente no Supabase REST como fallback.
    */
   async fetchLeads(): Promise<SupabaseKanbanLead[]> {
+    // 1. Tentar via backend proxy (resolve CORS e centraliza acesso)
+    try {
+      const apiKey = sessionStorage.getItem('openwa_api_key');
+      const apiOrigin = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+      const res = await fetch(`${apiOrigin}/api/sessions/default/cadences/supabase-leads`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        },
+      });
+      if (res.ok) {
+        const data = (await res.json()) as SupabaseKanbanLead[];
+        if (Array.isArray(data)) {
+          return data;
+        }
+      }
+    } catch {
+      // Fallback para REST direto
+    }
+
+    // 2. Fallback direto Supabase REST
     const cfg = await ensureConfig();
     if (!cfg) return [];
 
     try {
-      const url = `${cfg.url}/rest/v1/${cfg.table}?select=*&order=created_at.desc&limit=200`;
+      const url = `${cfg.url}/rest/v1/${cfg.table}?select=*&order=created_at.desc&limit=500`;
       const res = await fetch(url, { headers: headers(cfg.key) });
       if (!res.ok) {
         console.error('[supabase] fetchLeads error:', res.status, await res.text());
@@ -119,12 +141,31 @@ export const supabaseKanban = {
 
   /**
    * Atualiza o campo `stage` de um lead pelo seu `id` (UUID) ou `phone`.
-   * Atualiza o `status` e armazena o `stage` dentro do objeto JSON `metadata`.
    */
   async updateLeadStage(
     identifier: { id?: string; phone?: string },
     stage: KanbanStage,
   ): Promise<boolean> {
+    // 1. Tentar via backend proxy
+    try {
+      const apiKey = sessionStorage.getItem('openwa_api_key');
+      const apiOrigin = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+      const res = await fetch(`${apiOrigin}/api/sessions/default/cadences/supabase-leads/stage`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        },
+        body: JSON.stringify({ id: identifier.id, phone: identifier.phone, stage }),
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch {
+      // Fallback para REST direto
+    }
+
+    // 2. Fallback direto Supabase REST
     const cfg = await ensureConfig();
     if (!cfg) return false;
 
@@ -133,20 +174,16 @@ export const supabaseKanban = {
       : `phone=eq.${encodeURIComponent(identifier.phone!)}`;
 
     try {
-      // 1. Obter metadata atual para mesclar
       const getUrl = `${cfg.url}/rest/v1/${cfg.table}?${filter}&select=metadata`;
       const getRes = await fetch(getUrl, { headers: headers(cfg.key) });
       let existingMeta: Record<string, unknown> = {};
       if (getRes.ok) {
         const rows = (await getRes.json()) as Array<{ metadata?: Record<string, unknown> }>;
-        if (rows[0]?.metadata) {
-          existingMeta = rows[0].metadata;
-        }
+        if (rows[0]?.metadata) existingMeta = rows[0].metadata;
       }
 
       const updatedMeta = { ...existingMeta, stage };
 
-      // 2. PATCH status + metadata (funciona mesmo sem coluna `stage` explicita na tabela)
       const patchUrl = `${cfg.url}/rest/v1/${cfg.table}?${filter}`;
       const res = await fetch(patchUrl, {
         method: 'PATCH',
@@ -158,11 +195,7 @@ export const supabaseKanban = {
         }),
       });
 
-      if (!res.ok) {
-        console.error('[supabase] updateLeadStage error:', res.status, await res.text());
-        return false;
-      }
-      return true;
+      return res.ok;
     } catch (err) {
       console.error('[supabase] updateLeadStage exception:', err);
       return false;
@@ -175,6 +208,25 @@ export const supabaseKanban = {
   async createLead(
     lead: Omit<SupabaseKanbanLead, 'id' | 'created_at' | 'updated_at'>,
   ): Promise<SupabaseKanbanLead | null> {
+    // 1. Tentar via backend proxy
+    try {
+      const apiKey = sessionStorage.getItem('openwa_api_key');
+      const apiOrigin = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '');
+      const res = await fetch(`${apiOrigin}/api/sessions/default/cadences/supabase-leads/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        },
+        body: JSON.stringify(lead),
+      });
+      if (res.ok) {
+        return (await res.json()) as SupabaseKanbanLead;
+      }
+    } catch {
+      // Fallback
+    }
+
     const cfg = await ensureConfig();
     if (!cfg) return null;
 
