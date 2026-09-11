@@ -1,0 +1,244 @@
+.lead-funnel-section {
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border, #334155);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.funnel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.funnel-title-area {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.funnel-title-icon {
+  color: #25d366;
+  background: rgba(37, 211, 102, 0.12);
+  padding: 0.5rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.funnel-title-area h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary, #f8fafc);
+  margin: 0;
+}
+
+.funnel-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #94a3b8);
+  margin-top: 0.2rem;
+  display: block;
+}
+
+.funnel-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.funnel-period-btn {
+  background: var(--bg-hover, #0f172a);
+  border: 1px solid var(--border, #334155);
+  color: var(--text-secondary, #94a3b8);
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.funnel-period-btn.active,
+.funnel-period-btn:hover {
+  background: rgba(37, 211, 102, 0.15);
+  color: #25d366;
+  border-color: rgba(37, 211, 102, 0.4);
+}
+
+.funnel-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+.funnel-summary-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border, #334155);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.funnel-summary-card .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 600;
+}
+
+.funnel-summary-card .val {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-primary, #f8fafc);
+}
+
+.funnel-summary-card .highlight {
+  color: #25d366;
+}
+
+.funnel-summary-card .subtext {
+  font-size: 0.75rem;
+  color: var(--text-muted, #64748b);
+}
+
+/* Funnel Visualization Layout */
+.funnel-visualization {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.funnel-stage-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 120px;
+  align-items: center;
+  gap: 1.25rem;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid var(--border, #334155);
+  border-radius: 12px;
+  padding: 0.9rem 1.2rem;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.funnel-stage-row:hover {
+  transform: translateX(4px);
+  border-color: rgba(37, 211, 102, 0.3);
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.stage-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.stage-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.stage-text h4 {
+  margin: 0;
+  font-size: 0.925rem;
+  font-weight: 700;
+  color: var(--text-primary, #f8fafc);
+}
+
+.stage-text p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+/* Progress bar area */
+.stage-bar-container {
+  position: relative;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.stage-bar-fill {
+  height: 100%;
+  border-radius: 12px;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.stage-count-inline {
+  position: absolute;
+  left: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary, #f8fafc);
+}
+
+.stage-metrics {
+  text-align: right;
+}
+
+.stage-conversion {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary, #f8fafc);
+}
+
+.stage-conversion-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #94a3b8);
+  display: block;
+}
+
+/* Colors per stage */
+.stage-1 .stage-badge { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.stage-1 .stage-bar-fill { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+
+.stage-2 .stage-badge { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+.stage-2 .stage-bar-fill { background: linear-gradient(90deg, #a855f7, #c084fc); }
+
+.stage-3 .stage-badge { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.stage-3 .stage-bar-fill { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+
+.stage-4 .stage-badge { background: rgba(6, 182, 212, 0.15); color: #06b6d4; }
+.stage-4 .stage-bar-fill { background: linear-gradient(90deg, #06b6d4, #38bdf8); }
+
+.stage-5 .stage-badge { background: rgba(37, 211, 102, 0.15); color: #25d366; }
+.stage-5 .stage-bar-fill { background: linear-gradient(90deg, #25d366, #4ade80); }
+
+@media (max-width: 768px) {
+  .funnel-stage-row {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .stage-metrics {
+    text-align: left;
+  }
+}
