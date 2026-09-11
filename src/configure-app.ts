@@ -159,8 +159,8 @@ export function configureApp(app: INestApplication, options: ConfigureAppOptions
   // Serve SPA documents dynamically so the nonce embedded in this exact document matches its CSP
   // response header. A shared cookie is deliberately avoided: a second dashboard tab could overwrite
   // it and make the first tab's srcdoc scripts fail CSP. Assets and Nest-owned routes fall through.
-  if (dashboard.enabled && existsSync(join(dashboard.distDir, 'index.html'))) {
-    const dashboardIndex = readFileSync(join(dashboard.distDir, 'index.html'), 'utf8');
+  if (dashboard.enabled) {
+    const indexPath = join(dashboard.distDir, 'index.html');
     app.use((req: Request, res: Response, next: NextFunction) => {
       const excluded =
         req.path.startsWith('/api/') ||
@@ -174,8 +174,9 @@ export function configureApp(app: INestApplication, options: ConfigureAppOptions
         req.method === 'GET' &&
         !excluded &&
         ((req.headers.accept ?? '').includes('text/html') || extname(req.path) === '');
-      if (!documentRequest) return next();
+      if (!documentRequest || !existsSync(indexPath)) return next();
 
+      const dashboardIndex = readFileSync(indexPath, 'utf8');
       res.setHeader('Cache-Control', 'no-store');
       res.type('html').send(injectDashboardCspNonce(dashboardIndex, res.locals.cspNonce as string));
     });
