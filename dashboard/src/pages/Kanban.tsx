@@ -7,28 +7,26 @@ import {
   Phone,
   Building2,
   Inbox,
+  Loader2,
+  RefreshCw,
+  Database,
+  AlertCircle,
 } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { PageHeader } from '../components/PageHeader';
+import {
+  useKanbanLeadsQuery,
+  useUpdateLeadStageMutation,
+  useCreateKanbanLeadMutation,
+  useUpdateKanbanLeadMutation,
+  type KanbanStage,
+  type SupabaseKanbanLead,
+} from '../hooks/queries';
 import './Kanban.css';
-
-/* ── Types ── */
-export type LeadStage = 'cold' | 'contacted' | 'engaged' | 'proposal' | 'closed' | 'archived';
-
-export interface Lead {
-  id: string;
-  name: string;
-  company: string;
-  phone: string;
-  stage: LeadStage;
-  tags: string[];
-  createdAt: string;
-  notes?: string;
-}
 
 /* ── Column definitions ── */
 interface ColumnDef {
-  stage: LeadStage;
+  stage: KanbanStage;
   emoji: string;
   labelKey: string;
   color: string;
@@ -43,24 +41,51 @@ const COLUMNS: ColumnDef[] = [
   { stage: 'archived',  emoji: '❌', labelKey: 'kanban.stages.archived',  color: '#ef4444' },
 ];
 
-/* ── Seed data (demo) ── */
-const SEED_LEADS: Lead[] = [
-  { id: '1', name: 'Maria Oliveira',   company: 'Joalheria Brilhante',     phone: '11987654321', stage: 'cold',      tags: ['site'],             createdAt: '2026-09-10' },
-  { id: '2', name: 'Carlos Santos',    company: 'Relojoaria Tempo & Arte', phone: '21976543210', stage: 'cold',      tags: ['catalogo'],         createdAt: '2026-09-10' },
-  { id: '3', name: 'Ana Souza',        company: 'Gold & Silver SP',        phone: '11965432109', stage: 'contacted', tags: ['site', 'whatsapp'], createdAt: '2026-09-09' },
-  { id: '4', name: 'Ricardo Lima',     company: 'Relojoaria Pontual',      phone: '31954321098', stage: 'contacted', tags: ['catalogo'],         createdAt: '2026-09-09' },
-  { id: '5', name: 'Fernanda Costa',   company: 'Vivara Campinas',         phone: '19943210987', stage: 'engaged',   tags: ['site', 'catalogo'], createdAt: '2026-09-08' },
-  { id: '6', name: 'Paulo Mendes',     company: 'Joias do Vale',           phone: '12932109876', stage: 'proposal',  tags: ['site'],             createdAt: '2026-09-07' },
-  { id: '7', name: 'Juliana Ferreira', company: 'Tic Tac Relógios',       phone: '41921098765', stage: 'closed',    tags: ['site', 'whatsapp'], createdAt: '2026-09-05' },
-];
+/* ── UI Lead type (derived from SupabaseKanbanLead) ── */
+interface KanbanCard {
+  id: string;
+  name: string;
+  company: string;
+  phone: string;
+  stage: KanbanStage;
+  tags: string[];
+  createdAt: string;
+  notes?: string;
+}
 
 /* ── Helpers ── */
-const genId = () => `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-const formatDate = (iso: string) => {
+const formatDate = (iso?: string | null) => {
+  if (!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 };
+
+function supabaseToCard(lead: SupabaseKanbanLead): KanbanCard {
+  // Derive stage: use explicit `stage` field first, then map `status` → stage
+  let stage: KanbanStage = (lead.stage as KanbanStage) ?? 'cold';
+  if (!lead.stage && lead.status) {
+    const statusMap: Record<string, KanbanStage> = {
+      pending: 'cold',
+      sent: 'contacted',
+      replied: 'engaged',
+      scheduled: 'contacted',
+      completed: 'closed',
+      paused: 'cold',
+    };
+    stage = statusMap[lead.status] ?? 'cold';
+  }
+
+  return {
+    id: lead.id,
+    name: lead.name ?? lead.phone ?? '(sem nome)',
+    company: (lead.company ?? (lead.metadata?.company as string)) ?? '—',
+    phone: lead.phone,
+    stage,
+    tags: lead.tags ?? (lead.status ? [lead.status] : []),
+    createdAt: lead.created_at ?? new Date().toISOString(),
+    notes: lead.notes ?? undefined,
+  };
+}
 
 /* ═══════════════════════════════════════════════════════════════
    Kanban Page Component
@@ -69,33 +94,59 @@ export default function Kanban() {
   const { t } = useTranslation();
   useDocumentTitle(t('kanban.title', { defaultValue: 'CRM Kanban' }));
 
-  const [leads, setLeads] = useState<Lead[]>(SEED_LEADS);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editingCard, setEditingCard] = useState<KanbanCard | null>(null);
 
   /* Drag & Drop state */
   const dragItem = useRef<string | null>(null);
-  const [dragOverCol, setDragOverCol] = useState<LeadStage | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<KanbanStage | null>(null);
+  const [optimisticStages, setOptimisticStages] = useState<Record<string, KanbanStage>>({});
+
+  /* ── Remote data ── */
+  const {
+    data: rawLeads = [],
+    isLoading,
+    isRefetching,
+    refetch,
+    isError,
+  } = useKanbanLeadsQuery();
+
+  const updateStageMutation = useUpdateLeadStageMutation();
+  const createMutation = useCreateKanbanLeadMutation();
+  const updateMutation = useUpdateKanbanLeadMutation();
+
+  const supabaseConnected = rawLeads.length > 0 || !isError;
+
+  /* Build display cards (apply optimistic overrides) */
+  const cards: KanbanCard[] = useMemo(() => {
+    return rawLeads.map(lead => {
+      const card = supabaseToCard(lead);
+      if (optimisticStages[card.id]) {
+        return { ...card, stage: optimisticStages[card.id] };
+      }
+      return card;
+    });
+  }, [rawLeads, optimisticStages]);
 
   /* Filter */
   const filtered = useMemo(() => {
-    if (!search.trim()) return leads;
+    if (!search.trim()) return cards;
     const q = search.toLowerCase();
-    return leads.filter(
-      l =>
-        l.name.toLowerCase().includes(q) ||
-        l.company.toLowerCase().includes(q) ||
-        l.phone.includes(q),
+    return cards.filter(
+      c =>
+        c.name.toLowerCase().includes(q) ||
+        c.company.toLowerCase().includes(q) ||
+        c.phone.includes(q),
     );
-  }, [leads, search]);
+  }, [cards, search]);
 
   /* Group by stage */
   const grouped = useMemo(() => {
-    const map = new Map<LeadStage, Lead[]>();
+    const map = new Map<KanbanStage, KanbanCard[]>();
     for (const col of COLUMNS) map.set(col.stage, []);
-    for (const lead of filtered) {
-      map.get(lead.stage)!.push(lead);
+    for (const card of filtered) {
+      map.get(card.stage)!.push(card);
     }
     return map;
   }, [filtered]);
@@ -105,7 +156,7 @@ export default function Kanban() {
     dragItem.current = id;
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent, stage: LeadStage) => {
+  const handleDragOver = useCallback((e: React.DragEvent, stage: KanbanStage) => {
     e.preventDefault();
     setDragOverCol(stage);
   }, []);
@@ -115,47 +166,94 @@ export default function Kanban() {
   }, []);
 
   const handleDrop = useCallback(
-    (stage: LeadStage) => {
+    (stage: KanbanStage) => {
       setDragOverCol(null);
-      if (!dragItem.current) return;
-      setLeads(prev =>
-        prev.map(l => (l.id === dragItem.current ? { ...l, stage } : l)),
-      );
+      const id = dragItem.current;
+      if (!id) return;
       dragItem.current = null;
+
+      // Optimistic update immediately
+      setOptimisticStages(prev => ({ ...prev, [id]: stage }));
+
+      // Persist to Supabase
+      updateStageMutation.mutate(
+        { identifier: { id }, stage },
+        {
+          onSuccess: (ok) => {
+            if (!ok) {
+              // Rollback optimistic on failure
+              setOptimisticStages(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+              });
+            } else {
+              // Clear optimistic once real data is fetched
+              setOptimisticStages(prev => {
+                const next = { ...prev };
+                delete next[id];
+                return next;
+              });
+            }
+          },
+          onError: () => {
+            setOptimisticStages(prev => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          },
+        },
+      );
     },
-    [],
+    [updateStageMutation],
   );
 
   /* ── CRUD ── */
   const handleAddLead = () => {
-    setEditingLead(null);
+    setEditingCard(null);
     setShowModal(true);
   };
 
-  const handleEditLead = (lead: Lead) => {
-    setEditingLead(lead);
+  const handleEditLead = (card: KanbanCard) => {
+    setEditingCard(card);
     setShowModal(true);
   };
 
-  const handleSaveLead = (data: Omit<Lead, 'id' | 'createdAt'>) => {
-    if (editingLead) {
-      setLeads(prev =>
-        prev.map(l => (l.id === editingLead.id ? { ...l, ...data } : l)),
-      );
+  const handleSaveLead = async (data: Omit<KanbanCard, 'id' | 'createdAt'>) => {
+    if (editingCard) {
+      // Update existing
+      updateMutation.mutate({
+        id: editingCard.id,
+        data: {
+          name: data.name,
+          company: data.company,
+          phone: data.phone,
+          stage: data.stage,
+          tags: data.tags,
+          notes: data.notes,
+        },
+      });
     } else {
-      setLeads(prev => [
-        ...prev,
-        { ...data, id: genId(), createdAt: new Date().toISOString().slice(0, 10) },
-      ]);
+      // Create new
+      createMutation.mutate({
+        name: data.name,
+        company: data.company,
+        phone: data.phone,
+        stage: data.stage,
+        tags: data.tags,
+        notes: data.notes,
+        status: 'pending',
+      });
     }
     setShowModal(false);
-    setEditingLead(null);
+    setEditingCard(null);
   };
 
   /* ── Stats ── */
-  const totalLeads = leads.length;
-  const engagedCount = leads.filter(l => l.stage === 'engaged').length;
-  const closedCount = leads.filter(l => l.stage === 'closed').length;
+  const totalLeads = cards.length;
+  const engagedCount = cards.filter(c => c.stage === 'engaged').length;
+  const closedCount = cards.filter(c => c.stage === 'closed').length;
 
   return (
     <div className="kanban-page">
@@ -186,10 +284,43 @@ export default function Kanban() {
           {t('kanban.addLead', { defaultValue: 'Novo Lead' })}
         </button>
 
+        <button
+          className="kanban-refresh-btn"
+          onClick={() => void refetch()}
+          title="Atualizar dados do Supabase"
+          id="kanban-refresh-btn"
+          disabled={isRefetching}
+        >
+          <RefreshCw size={14} className={isRefetching ? 'animate-spin' : ''} />
+          {isRefetching ? 'Atualizando...' : 'Atualizar'}
+        </button>
+
+        {/* Connection indicator */}
+        <span
+          className="kanban-db-badge"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '4px 10px',
+            borderRadius: '8px',
+            fontSize: '0.73rem',
+            fontWeight: 600,
+            background: supabaseConnected
+              ? 'rgba(37, 211, 102, 0.12)'
+              : 'rgba(239, 68, 68, 0.12)',
+            color: supabaseConnected ? '#25d366' : '#ef4444',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          <Database size={12} />
+          {supabaseConnected ? 'Supabase' : 'Offline'}
+        </span>
+
         <div className="kanban-stats-bar">
           <div className="kanban-stat-chip">
             <span className="chip-dot" style={{ background: '#60a5fa' }} />
-            {totalLeads} {t('kanban.total', { defaultValue: 'leads' })}
+            {isLoading ? '...' : totalLeads} {t('kanban.total', { defaultValue: 'leads' })}
           </div>
           <div className="kanban-stat-chip">
             <span className="chip-dot" style={{ background: '#f59e0b' }} />
@@ -202,89 +333,129 @@ export default function Kanban() {
         </div>
       </div>
 
+      {/* Error banner */}
+      {isError && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'rgba(239,68,68,0.10)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: '10px',
+            padding: '0.75rem 1rem',
+            marginBottom: '1rem',
+            color: '#ef4444',
+            fontSize: '0.85rem',
+          }}
+        >
+          <AlertCircle size={16} />
+          Não foi possível conectar ao Supabase. Verifique as configurações de SUPABASE_URL e SUPABASE_KEY no servidor.
+        </div>
+      )}
+
+      {/* Loading overlay */}
+      {isLoading && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '200px',
+            gap: '10px',
+            color: 'var(--text-muted)',
+          }}
+        >
+          <Loader2 size={24} className="animate-spin" />
+          <span>Carregando leads do Supabase...</span>
+        </div>
+      )}
+
       {/* Board */}
-      <div className="kanban-board">
-        {COLUMNS.map(col => {
-          const cards = grouped.get(col.stage) ?? [];
-          return (
-            <div
-              key={col.stage}
-              className={`kanban-column ${dragOverCol === col.stage ? 'drag-over' : ''}`}
-              data-stage={col.stage}
-              onDragOver={e => handleDragOver(e, col.stage)}
-              onDragLeave={handleDragLeave}
-              onDrop={() => handleDrop(col.stage)}
-            >
-              <div className="kanban-column-header">
-                <div className="kanban-column-title">
-                  <span className="column-emoji">{col.emoji}</span>
-                  <span>{t(col.labelKey, { defaultValue: col.stage })}</span>
-                </div>
-                <span className="kanban-column-count">{cards.length}</span>
-              </div>
-
-              <div className="kanban-column-body">
-                {cards.length === 0 ? (
-                  <div className="kanban-empty">
-                    <Inbox size={28} />
-                    <span>{t('kanban.emptyColumn', { defaultValue: 'Nenhum lead aqui' })}</span>
+      {!isLoading && (
+        <div className="kanban-board">
+          {COLUMNS.map(col => {
+            const colCards = grouped.get(col.stage) ?? [];
+            return (
+              <div
+                key={col.stage}
+                className={`kanban-column ${dragOverCol === col.stage ? 'drag-over' : ''}`}
+                data-stage={col.stage}
+                onDragOver={e => handleDragOver(e, col.stage)}
+                onDragLeave={handleDragLeave}
+                onDrop={() => handleDrop(col.stage)}
+              >
+                <div className="kanban-column-header">
+                  <div className="kanban-column-title">
+                    <span className="column-emoji">{col.emoji}</span>
+                    <span>{t(col.labelKey, { defaultValue: col.stage })}</span>
                   </div>
-                ) : (
-                  cards.map(lead => (
-                    <div
-                      key={lead.id}
-                      className="kanban-card"
-                      draggable
-                      onDragStart={() => handleDragStart(lead.id)}
-                      onDragEnd={() => { dragItem.current = null; setDragOverCol(null); }}
-                    >
-                      <div className="kanban-card-header">
-                        <span className="kanban-card-name">{lead.name}</span>
-                        <button
-                          className="kanban-card-menu-btn"
-                          onClick={() => handleEditLead(lead)}
-                          title={t('common.edit', { defaultValue: 'Editar' })}
-                          aria-label={`Edit ${lead.name}`}
-                        >
-                          <MoreVertical size={14} />
-                        </button>
-                      </div>
+                  <span className="kanban-column-count">{colCards.length}</span>
+                </div>
 
-                      <div className="kanban-card-company">
-                        <Building2 size={12} />
-                        {lead.company}
-                      </div>
-
-                      <div className="kanban-card-phone">
-                        <Phone size={12} />
-                        {lead.phone}
-                      </div>
-
-                      <div className="kanban-card-footer">
-                        <div className="kanban-card-tags">
-                          {lead.tags.map(tag => (
-                            <span key={tag} className={`kanban-tag tag-${tag}`}>
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                        <span className="kanban-card-date">{formatDate(lead.createdAt)}</span>
-                      </div>
+                <div className="kanban-column-body">
+                  {colCards.length === 0 ? (
+                    <div className="kanban-empty">
+                      <Inbox size={28} />
+                      <span>{t('kanban.emptyColumn', { defaultValue: 'Nenhum lead aqui' })}</span>
                     </div>
-                  ))
-                )}
+                  ) : (
+                    colCards.map(card => (
+                      <div
+                        key={card.id}
+                        className="kanban-card"
+                        draggable
+                        onDragStart={() => handleDragStart(card.id)}
+                        onDragEnd={() => { dragItem.current = null; setDragOverCol(null); }}
+                      >
+                        <div className="kanban-card-header">
+                          <span className="kanban-card-name">{card.name}</span>
+                          <button
+                            className="kanban-card-menu-btn"
+                            onClick={() => handleEditLead(card)}
+                            title={t('common.edit', { defaultValue: 'Editar' })}
+                            aria-label={`Edit ${card.name}`}
+                          >
+                            <MoreVertical size={14} />
+                          </button>
+                        </div>
+
+                        <div className="kanban-card-company">
+                          <Building2 size={12} />
+                          {card.company}
+                        </div>
+
+                        <div className="kanban-card-phone">
+                          <Phone size={12} />
+                          {card.phone}
+                        </div>
+
+                        <div className="kanban-card-footer">
+                          <div className="kanban-card-tags">
+                            {card.tags.map(tag => (
+                              <span key={tag} className={`kanban-tag tag-${tag}`}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                          <span className="kanban-card-date">{formatDate(card.createdAt)}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Add/Edit Modal */}
       {showModal && (
         <LeadModal
-          lead={editingLead}
+          card={editingCard}
           onSave={handleSaveLead}
-          onClose={() => { setShowModal(false); setEditingLead(null); }}
+          onClose={() => { setShowModal(false); setEditingCard(null); }}
         />
       )}
     </div>
@@ -295,26 +466,26 @@ export default function Kanban() {
    Lead Modal (Add / Edit)
    ═══════════════════════════════════════════════════════════════ */
 interface LeadModalProps {
-  lead: Lead | null;
-  onSave: (data: Omit<Lead, 'id' | 'createdAt'>) => void;
+  card: KanbanCard | null;
+  onSave: (data: Omit<KanbanCard, 'id' | 'createdAt'>) => void;
   onClose: () => void;
 }
 
-function LeadModal({ lead, onSave, onClose }: LeadModalProps) {
+function LeadModal({ card, onSave, onClose }: LeadModalProps) {
   const { t } = useTranslation();
 
-  const [name, setName] = useState(lead?.name ?? '');
-  const [company, setCompany] = useState(lead?.company ?? '');
-  const [phone, setPhone] = useState(lead?.phone ?? '');
-  const [stage, setStage] = useState<LeadStage>(lead?.stage ?? 'cold');
-  const [tagsRaw, setTagsRaw] = useState(lead?.tags.join(', ') ?? '');
-  const [notes, setNotes] = useState(lead?.notes ?? '');
+  const [name, setName] = useState(card?.name ?? '');
+  const [company, setCompany] = useState(card?.company ?? '');
+  const [phone, setPhone] = useState(card?.phone ?? '');
+  const [stage, setStage] = useState<KanbanStage>(card?.stage ?? 'cold');
+  const [tagsRaw, setTagsRaw] = useState(card?.tags.join(', ') ?? '');
+  const [notes, setNotes] = useState(card?.notes ?? '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() && !phone.trim()) return;
     onSave({
-      name: name.trim(),
+      name: name.trim() || phone.trim(),
       company: company.trim(),
       phone: phone.trim(),
       stage,
@@ -334,14 +505,14 @@ function LeadModal({ lead, onSave, onClose }: LeadModalProps) {
         onSubmit={handleSubmit}
       >
         <h2>
-          {lead
+          {card
             ? t('kanban.editLead', { defaultValue: 'Editar Lead' })
             : t('kanban.addLead', { defaultValue: 'Novo Lead' })}
         </h2>
 
         <div className="kanban-modal-field">
           <label htmlFor="lead-name">{t('kanban.fields.name', { defaultValue: 'Nome do Contato' })}</label>
-          <input id="lead-name" value={name} onChange={e => setName(e.target.value)} required autoFocus />
+          <input id="lead-name" value={name} onChange={e => setName(e.target.value)} autoFocus />
         </div>
 
         <div className="kanban-modal-field">
@@ -350,13 +521,13 @@ function LeadModal({ lead, onSave, onClose }: LeadModalProps) {
         </div>
 
         <div className="kanban-modal-field">
-          <label htmlFor="lead-phone">{t('kanban.fields.phone', { defaultValue: 'Telefone / WhatsApp' })}</label>
-          <input id="lead-phone" value={phone} onChange={e => setPhone(e.target.value)} />
+          <label htmlFor="lead-phone">{t('kanban.fields.phone', { defaultValue: 'Telefone / WhatsApp' })} *</label>
+          <input id="lead-phone" value={phone} onChange={e => setPhone(e.target.value)} required placeholder="5511999999999" />
         </div>
 
         <div className="kanban-modal-field">
           <label htmlFor="lead-stage">{t('kanban.fields.stage', { defaultValue: 'Etapa' })}</label>
-          <select id="lead-stage" value={stage} onChange={e => setStage(e.target.value as LeadStage)}>
+          <select id="lead-stage" value={stage} onChange={e => setStage(e.target.value as KanbanStage)}>
             {COLUMNS.map(col => (
               <option key={col.stage} value={col.stage}>
                 {col.emoji} {t(col.labelKey, { defaultValue: col.stage })}

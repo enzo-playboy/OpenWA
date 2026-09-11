@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { Public } from '../auth/decorators/auth.decorators';
 import { CadenceService } from './cadence.service';
+import { SupabaseSyncService } from './supabase-sync.service';
 import { CreateCadenceDto } from './dto/create-cadence.dto';
 import { EnrollBatchLeadsDto } from './dto/enroll-lead.dto';
 
@@ -9,7 +11,11 @@ import { EnrollBatchLeadsDto } from './dto/enroll-lead.dto';
 @Public()
 @Controller('sessions/:sessionId/cadences')
 export class CadenceController {
-  constructor(private readonly cadenceService: CadenceService) {}
+  constructor(
+    private readonly cadenceService: CadenceService,
+    private readonly supabaseSync: SupabaseSyncService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Criar uma nova régua de cadência de até 10 toques com regras anti-ban' })
@@ -41,6 +47,25 @@ export class CadenceController {
   @ApiOperation({ summary: 'Obter estatísticas consolidadas e em tempo real do Funil de Leads' })
   getFunnelStats() {
     return this.cadenceService.getGlobalFunnelStats();
+  }
+
+  @Get('supabase-config')
+  @ApiOperation({ summary: 'Retorna configuração do Supabase para o Dashboard Kanban (sem expor a chave privada completa)' })
+  getSupabaseConfig() {
+    const url = process.env.SUPABASE_URL || this.configService.get<string>('SUPABASE_URL');
+    const key = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || this.configService.get<string>('SUPABASE_KEY');
+    const table = process.env.SUPABASE_LEADS_TABLE || this.configService.get<string>('SUPABASE_LEADS_TABLE') || 'leads';
+
+    if (!url || !key) {
+      return { configured: false, url: null, key: null, table };
+    }
+
+    return {
+      configured: true,
+      url,
+      key,
+      table,
+    };
   }
 
   @Get(':id/stats')

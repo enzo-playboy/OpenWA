@@ -16,6 +16,7 @@ import {
   type CreateInstanceInput,
   type UpdateInstanceInput,
 } from '../services/api';
+import { supabaseKanban, type KanbanStage, type SupabaseKanbanLead } from '../services/supabase';
 
 // ── Query Keys ────────────────────────────────────────────────────────
 
@@ -36,7 +37,11 @@ export const queryKeys = {
   statsOverview: ['stats', 'overview'] as const,
   statsMessages: (period: string) => ['stats', 'messages', period] as const,
   statsFunnel: ['stats', 'funnel'] as const,
+  kanbanLeads: ['kanban', 'leads'] as const,
 };
+
+// Re-export types for consumers
+export type { KanbanStage, SupabaseKanbanLead };
 
 // ── Session Queries ───────────────────────────────────────────────────
 
@@ -377,5 +382,53 @@ export function useFunnelStatsQuery() {
     queryFn: () => statsApi.getFunnel(),
     staleTime: 10_000,
     refetchInterval: 15_000, // real-time refresh every 15s
+  });
+}
+
+// ── Kanban / CRM Leads Queries (Supabase) ────────────────────────────
+
+export function useKanbanLeadsQuery() {
+  return useQuery({
+    queryKey: queryKeys.kanbanLeads,
+    queryFn: () => supabaseKanban.fetchLeads(),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    // Return empty array (not error) when Supabase is not configured
+    placeholderData: [],
+  });
+}
+
+export function useUpdateLeadStageMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ identifier, stage }: { identifier: { id?: string; phone?: string }; stage: KanbanStage }) =>
+      supabaseKanban.updateLeadStage(identifier, stage),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.kanbanLeads });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.statsFunnel });
+    },
+  });
+}
+
+export function useCreateKanbanLeadMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Omit<SupabaseKanbanLead, 'id' | 'created_at' | 'updated_at'>) =>
+      supabaseKanban.createLead(data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.kanbanLeads });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.statsFunnel });
+    },
+  });
+}
+
+export function useUpdateKanbanLeadMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Omit<SupabaseKanbanLead, 'id' | 'created_at'>> }) =>
+      supabaseKanban.updateLead(id, data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.kanbanLeads });
+    },
   });
 }
