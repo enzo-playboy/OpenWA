@@ -35,14 +35,6 @@ export class CadenceController {
     return this.cadenceService.findAllCadences(sessionId);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Obter detalhes de uma régua de cadência específica' })
-  @ApiParam({ name: 'sessionId', description: 'ID da sessão do WhatsApp' })
-  @ApiParam({ name: 'id', description: 'ID da cadência' })
-  findOne(@Param('id') id: string) {
-    return this.cadenceService.findCadenceById(id);
-  }
-
   @Get('funnel-stats')
   @ApiOperation({ summary: 'Obter estatísticas consolidadas e em tempo real do Funil de Leads' })
   getFunnelStats() {
@@ -66,6 +58,14 @@ export class CadenceController {
       key,
       table,
     };
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Obter detalhes de uma régua de cadência específica' })
+  @ApiParam({ name: 'sessionId', description: 'ID da sessão do WhatsApp' })
+  @ApiParam({ name: 'id', description: 'ID da cadência' })
+  findOne(@Param('id') id: string) {
+    return this.cadenceService.findCadenceById(id);
   }
 
   @Get(':id/stats')

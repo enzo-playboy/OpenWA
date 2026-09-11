@@ -219,34 +219,63 @@ export class CadenceService {
    * Estatísticas em tempo real do Funil de Vendas (Estratégia do Pequeno Sim)
    */
   async getGlobalFunnelStats() {
-    const totalLeads = await this.leadProgressRepository.count();
-    
-    const enviadas = await this.leadProgressRepository
+    let prospectados = await this.leadProgressRepository.count();
+
+    let enviados = await this.leadProgressRepository
       .createQueryBuilder('p')
       .where('p.currentStep > 0 OR p.lastSentAt IS NOT NULL')
       .getCount();
 
-    const responded = await this.leadProgressRepository
+    let responded = await this.leadProgressRepository
       .createQueryBuilder('p')
       .where("p.status = 'replied_paused' OR p.lastReplyAt IS NOT NULL")
       .getCount();
 
-    const proposta = await this.leadProgressRepository
+    let proposta = await this.leadProgressRepository
       .createQueryBuilder('p')
       .where("p.status = 'completed' OR p.variables LIKE '%proposta%' OR p.variables LIKE '%high_ticket%'")
       .getCount();
 
-    const fechados = await this.leadProgressRepository
+    let fechados = await this.leadProgressRepository
       .createQueryBuilder('p')
       .where("p.variables LIKE '%fechado%' OR p.variables LIKE '%closed%' OR p.variables LIKE '%venda%'")
       .getCount();
 
+    // Se Supabase estiver configurado, agrega estatísticas reais da tabela `leads`
+    if (this.supabaseSync.isConfigured()) {
+      try {
+        const sbLeads = await this.supabaseSync.fetchLeadsFromSupabase(1000);
+        if (sbLeads && sbLeads.length > 0) {
+          prospectados = Math.max(prospectados, sbLeads.length);
+          const sbEnviados = sbLeads.filter(
+            l => l.status === 'sent' || l.status === 'contacted' || (l.current_step && l.current_step > 0),
+          ).length;
+          const sbResponded = sbLeads.filter(
+            l => l.status === 'replied' || l.status === 'engaged' || l.last_reply_at || (l.metadata && (l.metadata as Record<string, unknown>).stage === 'engaged'),
+          ).length;
+          const sbProposta = sbLeads.filter(
+            l => l.status === 'proposal' || (l.metadata && (l.metadata as Record<string, unknown>).stage === 'proposal'),
+          ).length;
+          const sbFechados = sbLeads.filter(
+            l => l.status === 'closed' || l.status === 'completed' || (l.metadata && (l.metadata as Record<string, unknown>).stage === 'closed'),
+          ).length;
+
+          enviados = Math.max(enviados, sbEnviados);
+          responded = Math.max(responded, sbResponded);
+          proposta = Math.max(proposta, sbProposta);
+          fechados = Math.max(fechados, sbFechados);
+        }
+      } catch (err) {
+        // Fallback para métricas locais se houver falha de rede
+      }
+    }
+
     return {
-      prospectados: totalLeads,
-      enviados: enviadas,
-      responded: responded,
-      proposta: proposta,
-      fechados: fechados,
+      prospectados,
+      enviados,
+      responded,
+      proposta,
+      fechados,
       supabaseConfigured: this.supabaseSync.isConfigured(),
     };
   }

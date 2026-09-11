@@ -61,29 +61,40 @@ const formatDate = (iso?: string | null) => {
 };
 
 function supabaseToCard(lead: SupabaseKanbanLead): KanbanCard {
-  // Derive stage: use explicit `stage` field first, then map `status` → stage
-  let stage: KanbanStage = (lead.stage as KanbanStage) ?? 'cold';
-  if (!lead.stage && lead.status) {
+  const meta = (lead.metadata ?? {}) as Record<string, unknown>;
+  let stage: KanbanStage = (lead.stage as KanbanStage) ?? (meta.stage as KanbanStage);
+
+  if (!stage) {
     const statusMap: Record<string, KanbanStage> = {
+      cold: 'cold',
       pending: 'cold',
+      contacted: 'contacted',
       sent: 'contacted',
+      engaged: 'engaged',
       replied: 'engaged',
-      scheduled: 'contacted',
+      proposal: 'proposal',
+      scheduled: 'proposal',
+      closed: 'closed',
       completed: 'closed',
-      paused: 'cold',
+      archived: 'archived',
+      paused: 'archived',
     };
-    stage = statusMap[lead.status] ?? 'cold';
+    stage = statusMap[lead.status ?? ''] ?? 'cold';
   }
+
+  const tags = lead.tags ?? (meta.tags as string[]) ?? (lead.status ? [lead.status] : []);
+  const company = lead.company ?? (meta.company as string) ?? '—';
+  const notes = lead.notes ?? (meta.notes as string) ?? undefined;
 
   return {
     id: lead.id,
     name: lead.name ?? lead.phone ?? '(sem nome)',
-    company: (lead.company ?? (lead.metadata?.company as string)) ?? '—',
+    company,
     phone: lead.phone,
     stage,
-    tags: lead.tags ?? (lead.status ? [lead.status] : []),
+    tags,
     createdAt: lead.created_at ?? new Date().toISOString(),
-    notes: lead.notes ?? undefined,
+    notes,
   };
 }
 

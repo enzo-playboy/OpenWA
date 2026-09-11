@@ -119,6 +119,7 @@ export const supabaseKanban = {
 
   /**
    * Atualiza o campo `stage` de um lead pelo seu `id` (UUID) ou `phone`.
+   * Atualiza o `status` e armazena o `stage` dentro do objeto JSON `metadata`.
    */
   async updateLeadStage(
     identifier: { id?: string; phone?: string },
@@ -132,12 +133,31 @@ export const supabaseKanban = {
       : `phone=eq.${encodeURIComponent(identifier.phone!)}`;
 
     try {
-      const url = `${cfg.url}/rest/v1/${cfg.table}?${filter}`;
-      const res = await fetch(url, {
+      // 1. Obter metadata atual para mesclar
+      const getUrl = `${cfg.url}/rest/v1/${cfg.table}?${filter}&select=metadata`;
+      const getRes = await fetch(getUrl, { headers: headers(cfg.key) });
+      let existingMeta: Record<string, unknown> = {};
+      if (getRes.ok) {
+        const rows = (await getRes.json()) as Array<{ metadata?: Record<string, unknown> }>;
+        if (rows[0]?.metadata) {
+          existingMeta = rows[0].metadata;
+        }
+      }
+
+      const updatedMeta = { ...existingMeta, stage };
+
+      // 2. PATCH status + metadata (funciona mesmo sem coluna `stage` explicita na tabela)
+      const patchUrl = `${cfg.url}/rest/v1/${cfg.table}?${filter}`;
+      const res = await fetch(patchUrl, {
         method: 'PATCH',
         headers: { ...headers(cfg.key), Prefer: 'return=minimal' },
-        body: JSON.stringify({ stage, updated_at: new Date().toISOString() }),
+        body: JSON.stringify({
+          status: stage,
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString(),
+        }),
       });
+
       if (!res.ok) {
         console.error('[supabase] updateLeadStage error:', res.status, await res.text());
         return false;
@@ -150,7 +170,7 @@ export const supabaseKanban = {
   },
 
   /**
-   * Cria um novo lead na tabela.
+   * Cria um novo lead na tabela Supabase.
    */
   async createLead(
     lead: Omit<SupabaseKanbanLead, 'id' | 'created_at' | 'updated_at'>,
@@ -160,11 +180,27 @@ export const supabaseKanban = {
 
     try {
       const url = `${cfg.url}/rest/v1/${cfg.table}`;
+      const payload = {
+        phone: lead.phone,
+        name: lead.name ?? lead.phone,
+        status: lead.stage ?? lead.status ?? 'cold',
+        metadata: {
+          ...(lead.metadata ?? {}),
+          stage: lead.stage ?? 'cold',
+          company: lead.company,
+          tags: lead.tags,
+          notes: lead.notes,
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
       const res = await fetch(url, {
         method: 'POST',
         headers: headers(cfg.key),
-        body: JSON.stringify({ ...lead, created_at: new Date().toISOString() }),
+        body: JSON.stringify(payload),
       });
+
       if (!res.ok) {
         console.error('[supabase] createLead error:', res.status, await res.text());
         return null;
@@ -188,11 +224,35 @@ export const supabaseKanban = {
     if (!cfg) return false;
 
     try {
-      const url = `${cfg.url}/rest/v1/${cfg.table}?id=eq.${encodeURIComponent(id)}`;
-      const res = await fetch(url, {
+      const filter = `id=eq.${encodeURIComponent(id)}`;
+      const getUrl = `${cfg.url}/rest/v1/${cfg.table}?${filter}&select=metadata`;
+      const getRes = await fetch(getUrl, { headers: headers(cfg.key) });
+      let existingMeta: Record<string, unknown> = {};
+      if (getRes.ok) {
+        const rows = (await getRes.json()) as Array<{ metadata?: Record<string, unknown> }>;
+        if (rows[0]?.metadata) existingMeta = rows[0].metadata;
+      }
+
+      const patchBody: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (data.name !== undefined) patchBody.name = data.name;
+      if (data.phone !== undefined) patchBody.phone = data.phone;
+      if (data.stage !== undefined) patchBody.status = data.stage;
+
+      patchBody.metadata = {
+        ...existingMeta,
+        ...(data.stage ? { stage: data.stage } : {}),
+        ...(data.company !== undefined ? { company: data.company } : {}),
+        ...(data.tags !== undefined ? { tags: data.tags } : {}),
+        ...(data.notes !== undefined ? { notes: data.notes } : {}),
+      };
+
+      const patchUrl = `${cfg.url}/rest/v1/${cfg.table}?${filter}`;
+      const res = await fetch(patchUrl, {
         method: 'PATCH',
         headers: { ...headers(cfg.key), Prefer: 'return=minimal' },
-        body: JSON.stringify({ ...data, updated_at: new Date().toISOString() }),
+        body: JSON.stringify(patchBody),
       });
       return res.ok;
     } catch (err) {

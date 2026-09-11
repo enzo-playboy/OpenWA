@@ -47,16 +47,17 @@ export class SupabaseSyncService {
   }
 
   /**
-   * Buscar novos leads do Supabase para colocar na régua de prospecção.
+   * Buscar leads do Supabase para colocar na régua de prospecção ou para o dashboard.
    */
-  async fetchLeadsFromSupabase(limit = 50): Promise<SupabaseLead[]> {
+  async fetchLeadsFromSupabase(limit = 1000, statusFilter?: string): Promise<SupabaseLead[]> {
     if (!this.isConfigured()) {
       this.logger.warn('Supabase not configured (SUPABASE_URL / SUPABASE_KEY missing)');
       return [];
     }
 
     try {
-      const endpoint = `${this.supabaseUrl}/rest/v1/${this.leadsTable}?status=eq.pending&select=*&limit=${limit}`;
+      const query = statusFilter ? `status=eq.${encodeURIComponent(statusFilter)}&` : '';
+      const endpoint = `${this.supabaseUrl}/rest/v1/${this.leadsTable}?${query}select=*&limit=${limit}`;
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
@@ -71,7 +72,7 @@ export class SupabaseSyncService {
       }
 
       const leads: SupabaseLead[] = await response.json();
-      this.logger.log(`Fetched ${leads.length} pending leads from Supabase table '${this.leadsTable}'`);
+      this.logger.log(`Fetched ${leads.length} leads from Supabase table '${this.leadsTable}'`);
       return leads;
     } catch (err: any) {
       this.logger.error(`Failed to fetch leads from Supabase: ${err.message}`);
