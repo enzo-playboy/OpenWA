@@ -20,10 +20,7 @@ export class SupabaseSyncService {
   constructor(private readonly configService: ConfigService) {}
 
   private get supabaseUrl(): string | undefined {
-    return (
-      process.env.SUPABASE_URL ||
-      this.configService.get<string>('SUPABASE_URL')
-    );
+    return process.env.SUPABASE_URL || this.configService.get<string>('SUPABASE_URL');
   }
 
   private get supabaseKey(): string | undefined {
@@ -71,11 +68,12 @@ export class SupabaseSyncService {
         throw new Error(`Supabase GET error: ${response.status} ${response.statusText}`);
       }
 
-      const leads: SupabaseLead[] = await response.json();
+      const leads = (await response.json()) as SupabaseLead[];
       this.logger.log(`Fetched ${leads.length} leads from Supabase table '${this.leadsTable}'`);
       return leads;
-    } catch (err: any) {
-      this.logger.error(`Failed to fetch leads from Supabase: ${err.message}`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to fetch leads from Supabase: ${errMsg}`);
       return [];
     }
   }
@@ -109,10 +107,11 @@ export class SupabaseSyncService {
         return false;
       }
 
-      this.logger.log(`Updated lead ${cleanPhone} in Supabase with status '${statusData.status}'`);
+      this.logger.log(`Updated lead ${cleanPhone} in Supabase with status '${statusData.status ?? ''}'`);
       return true;
-    } catch (err: any) {
-      this.logger.error(`Failed to update lead ${phone} in Supabase: ${err.message}`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to update lead ${phone} in Supabase: ${errMsg}`);
       return false;
     }
   }
