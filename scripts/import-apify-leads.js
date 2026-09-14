@@ -57,6 +57,54 @@ async function fetchApifyDataset(datasetIdOrPath, apifyToken) {
 }
 
 /**
+ * Calculate ICP Score (0 to 100) based on lead data
+ */
+function calculateIcpScore(item, hasWebsite) {
+  let score = 0;
+
+  // 1. Status do Site (30 pts se não tiver site)
+  if (!hasWebsite) {
+    score += 30;
+  }
+
+  // 2. Avaliações e Nota do Google Maps (até 25 pts)
+  const rating = Number(item.totalScore || item.rating || item.stars || 0);
+  const reviewsCount = Number(item.reviewsCount || item.reviews || 0);
+
+  if (rating >= 4.5 && reviewsCount >= 20) {
+    score += 25;
+  } else if (rating >= 4.0 && reviewsCount >= 10) {
+    score += 15;
+  } else if (reviewsCount >= 5) {
+    score += 10;
+  }
+
+  // 3. Nicho Tier 1 (25 pts) vs Tier 2 (15 pts)
+  const category = String(item.categoryName || item.categories || item.title || '').toLowerCase();
+  const tier1Keywords = ['joia', 'joalheria', 'relojoaria', 'estetica', 'harmonizacao', 'odontologia', 'planejado', 'marcenaria', 'arquitetura'];
+  const tier2Keywords = ['optica', 'otica', 'detailing', 'polimento', 'blindagem', 'petshop', 'veterinaria'];
+
+  if (tier1Keywords.some((kw) => category.includes(kw))) {
+    score += 25;
+  } else if (tier2Keywords.some((kw) => category.includes(kw))) {
+    score += 15;
+  } else {
+    score += 10;
+  }
+
+  // 4. Bairro / Região Nobre (até 20 pts)
+  const address = String(item.address || item.neighborhood || item.city || '').toLowerCase();
+  const highIncomeAreas = ['itaim', 'moema', 'olimpia', 'jardins', 'pinheiros', 'tatuape', 'mooca', 'alphaville', 'barra', 'savassi', 'batel'];
+  if (highIncomeAreas.some((area) => address.includes(area))) {
+    score += 20;
+  } else {
+    score += 5;
+  }
+
+  return Math.min(score, 100);
+}
+
+/**
  * Main execution function
  */
 async function main() {
@@ -66,13 +114,13 @@ async function main() {
   if (!target) {
     console.log(`
 Usage:
-  node scripts/import-apify-leads.js <DATASET_ID|RUN_URL|FILE_PATH>
+  node scripts/import-apify-leads.js <DATASET_ID|RUN_URL|FILE_PATH> [--only-no-website] [--min-score=70]
 
 Exemplo 1 (Apify Dataset ID):
-  node scripts/import-apify-leads.js abc123def456
+  node scripts/import-apify-leads.js abc123def456 --only-no-website
 
 Exemplo 2 (Arquivo JSON Local):
-  node scripts/import-apify-leads.js ./data/leads.json
+  node scripts/import-apify-leads.js ./data/leads.json --min-score=70
 `);
     process.exit(1);
   }
@@ -84,6 +132,8 @@ Exemplo 2 (Arquivo JSON Local):
 
   const onlyNoWebsite = args.includes('--only-no-website');
   const onlyHasWebsite = args.includes('--only-has-website');
+  const minScoreArg = args.find((arg) => arg.startsWith('--min-score='));
+  const minScoreFilter = minScoreArg ? Number.parseInt(minScoreArg.split('=')[1], 10) : 0;
 
   try {
     const rawItems = await fetchApifyDataset(target, process.env.APIFY_TOKEN);
@@ -96,6 +146,7 @@ Exemplo 2 (Arquivo JSON Local):
     const formattedLeads = [];
     let skippedCount = 0;
     let websiteFilteredCount = 0;
+    let scoreFilteredCount = 0;
 
     for (const item of rawItems) {
       // Extract phone from common Apify leads-scraper & Google Maps fields
@@ -120,6 +171,12 @@ Exemplo 2 (Arquivo JSON Local):
         continue;
       }
 
+      const icpScore = calculateIcpScore(item, hasWebsite);
+      if (icpScore < minScoreFilter) {
+        scoreFilteredCount++;
+        continue;
+      }
+
       const name = item.fullName || (item.firstName ? (item.firstName + ' ' + (item.lastName || '')).trim() : null) || item.name || item.title || item.companyName || 'Lead Frio';
       const company = item.companyName || item.company || item.organization || item.title || item.name || '';
       const email = item.email || item.work_email || item.personal_email || '';
@@ -136,6 +193,9 @@ Exemplo 2 (Arquivo JSON Local):
           job_title: jobTitle,
           website: website || null,
           has_website: hasWebsite,
+          icp_score: icpScore,
+          google_rating: Number(item.totalScore || item.rating || item.stars || 0),
+          google_reviews_count: Number(item.reviewsCount || item.reviews || 0),
           apify_source: 'apify-importer',
           raw_data: item,
         },

@@ -5,6 +5,7 @@ import { AiKnowledge } from './entities/ai-knowledge.entity';
 import { AiLog } from './entities/ai-log.entity';
 import { Message } from '../message/entities/message.entity';
 import { AiAgentService } from './ai-agent.service';
+import { AgencyAgentTemplatesService } from './agency-agent-templates.service';
 import { AiAgentController } from './ai-agent.controller';
 import { GroqTranscriptionService } from './groq-transcription.service';
 import { InstagramModule } from '../instagram/instagram.module';
@@ -16,8 +17,9 @@ import { forwardRef } from '@nestjs/common';
     forwardRef(() => InstagramModule),
   ],
   controllers: [AiAgentController],
-  providers: [AiAgentService, GroqTranscriptionService],
-  exports: [AiAgentService, GroqTranscriptionService],
+  providers: [AiAgentService, AgencyAgentTemplatesService, GroqTranscriptionService],
+  exports: [AiAgentService, AgencyAgentTemplatesService, GroqTranscriptionService],
 })
 export class AiAgentModule {}
+
 

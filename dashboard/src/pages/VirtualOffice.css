@@ -1,0 +1,681 @@
+/* =========================================================
+   VIRTUAL OFFICE - PIXEL ART AGENCY DASHBOARD
+   ========================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=Inter:wght@400;500;600;700&display=swap');
+
+.vo-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-primary, #1e293b);
+}
+
+/* --- Header & Controls --- */
+.vo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background: var(--bg-card, #ffffff);
+  border: 2px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.vo-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.vo-title-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.vo-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  background: linear-gradient(135deg, #1e293b, #475569);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dark .vo-title {
+  background: linear-gradient(135deg, #f8fafc, #cbd5e1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.vo-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-muted, #64748b);
+  margin: 0.25rem 0 0 0;
+}
+
+.vo-stats-summary {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.vo-stat-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: var(--bg-muted, #f1f5f9);
+  border: 1px solid var(--border-color, #e2e8f0);
+}
+
+.vo-stat-badge.working {
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.vo-stat-badge.done {
+  background: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.vo-stat-badge.idle {
+  background: rgba(148, 163, 184, 0.1);
+  color: #64748b;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+/* --- MAIN PIXEL ART OFFICE STAGE --- */
+.vo-stage-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 4px solid #33271e;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  background: #3a2c22;
+}
+
+.vo-stage {
+  position: relative;
+  width: 100%;
+  min-height: 640px;
+  background: 
+    linear-gradient(to bottom, #d4a373 0%, #b58255 35%, #8c5a32 36%, #704423 100%);
+  background-size: 100% 100%;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Wood Floor Pattern Overlay */
+.vo-floor-texture {
+  position: absolute;
+  top: 180px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    repeating-linear-gradient(0deg, transparent, transparent 38px, rgba(0,0,0,0.12) 38px, rgba(0,0,0,0.12) 40px),
+    repeating-linear-gradient(90deg, transparent, transparent 120px, rgba(0,0,0,0.06) 120px, rgba(0,0,0,0.06) 122px);
+  pointer-events: none;
+}
+
+/* Wall Decor: Wallpapers, Clock, Whiteboard, Bookshelves */
+.vo-wall-decor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 180px;
+  background: #ecd9c6;
+  border-bottom: 8px solid #5c3a21;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 2rem;
+  box-sizing: border-box;
+}
+
+/* Wall Pattern Stripes */
+.vo-wall-decor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,0,0,0.02) 40px, rgba(0,0,0,0.02) 42px);
+  pointer-events: none;
+}
+
+/* Bookshelf */
+.vo-bookshelf {
+  width: 110px;
+  height: 140px;
+  background: #7a4f2b;
+  border: 4px solid #4a2e16;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  padding: 6px;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.3), 0 4px 8px rgba(0,0,0,0.2);
+  z-index: 2;
+}
+
+.vo-bookshelf-shelf {
+  height: 36px;
+  border-bottom: 4px solid #4a2e16;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding-left: 2px;
+}
+
+.vo-book {
+  width: 12px;
+  border-radius: 2px 2px 0 0;
+  box-shadow: inset 1px 0 0 rgba(255,255,255,0.3);
+}
+
+/* Whiteboard */
+.vo-whiteboard {
+  width: 220px;
+  height: 110px;
+  background: #f8fafc;
+  border: 6px solid #94a3b8;
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: 'VT323', monospace;
+  color: #1e293b;
+  z-index: 2;
+}
+
+.vo-whiteboard-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 2px dashed #cbd5e1;
+  padding-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vo-whiteboard-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 50px;
+  padding-top: 6px;
+}
+
+.vo-chart-bar {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  transition: height 0.5s ease;
+  position: relative;
+}
+
+/* Clock */
+.vo-clock {
+  width: 50px;
+  height: 50px;
+  background: #fff;
+  border: 5px solid #475569;
+  border-radius: 50%;
+  position: relative;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'VT323', monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0f172a;
+  z-index: 2;
+}
+
+.vo-clock-hand {
+  position: absolute;
+  background: #0f172a;
+  transform-origin: bottom center;
+}
+.vo-clock-hand.hour {
+  width: 3px;
+  height: 14px;
+  top: 10px;
+}
+.vo-clock-hand.minute {
+  width: 2px;
+  height: 18px;
+  top: 6px;
+  background: #ef4444;
+}
+
+/* Plants at corners */
+.vo-plant {
+  position: absolute;
+  top: 155px;
+  z-index: 3;
+  width: 54px;
+  height: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.vo-plant-pot {
+  width: 36px;
+  height: 28px;
+  background: #c2410c;
+  border-radius: 0 0 8px 8px;
+  border: 3px solid #7c2d12;
+}
+
+.vo-plant-leaves {
+  width: 50px;
+  height: 42px;
+  background: #16a34a;
+  border-radius: 50% 50% 10% 10%;
+  border: 3px solid #14532d;
+  box-shadow: inset 0 -6px 0 #15803d;
+}
+
+/* --- DESKS GRID --- */
+.vo-desks-grid {
+  position: relative;
+  margin-top: 200px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2.5rem 2rem;
+  z-index: 4;
+}
+
+/* Desk Card */
+.vo-desk-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 3px solid #4a3425;
+  border-radius: 12px;
+  padding: 1rem 1.25rem 1.5rem 1.25rem;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark .vo-desk-card {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: #64748b;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.45);
+}
+
+.vo-desk-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 32px rgba(0,0,0,0.35);
+  border-color: #6366f1;
+}
+
+/* Desk Header (Name & Status) */
+.vo-desk-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.vo-agent-name {
+  font-family: 'Press Start 2P', cursive, monospace;
+  font-size: 0.75rem;
+  color: #0f172a;
+  line-height: 1.4;
+
+  margin: 0;
+}
+
+.dark .vo-agent-name {
+  color: #f8fafc;
+}
+
+.vo-agent-role {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Status Pill */
+.vo-status-tag {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.6rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  text-transform: lowercase;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,0.2);
+}
+
+.vo-status-tag.working {
+  background: #3b82f6;
+  color: #ffffff;
+  animation: pulse-glow 1.5s infinite alternate;
+}
+
+.vo-status-tag.done {
+  background: #22c55e;
+  color: #ffffff;
+}
+
+.vo-status-tag.idle {
+  background: #94a3b8;
+  color: #ffffff;
+}
+
+.vo-status-tag.thinking {
+  background: #eab308;
+  color: #0f172a;
+  animation: pulse-glow 1s infinite alternate;
+}
+
+@keyframes pulse-glow {
+  0% { opacity: 0.85; filter: brightness(1); }
+  100% { opacity: 1; filter: brightness(1.25); }
+}
+
+/* COMPUTER & MONITOR PIXEL ART DISPLAY */
+.vo-computer-workspace {
+  position: relative;
+  width: 180px;
+  height: 110px;
+  background: #d1b89d;
+  border: 3px solid #7c5c3f;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 8px;
+  box-shadow: inset 0 -4px 0 #a38466, 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Monitor Frame */
+.vo-monitor-screen {
+  width: 130px;
+  height: 72px;
+  background: #1e293b;
+  border: 4px solid #0f172a;
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  transition: all 0.3s ease;
+}
+
+/* Monitor Screen States */
+.vo-monitor-screen.working {
+  background: #0f172a;
+  border-color: #1e3a8a;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.7);
+}
+
+.vo-monitor-screen.done {
+  background: #064e3b;
+  border-color: #047857;
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.6);
+}
+
+.vo-monitor-screen.idle {
+  background: #090d16;
+  border-color: #1e293b;
+}
+
+/* Screen Code/Graphic Animation */
+.vo-screen-code {
+  width: 85%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vo-code-line {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.2);
+}
+
+.vo-monitor-screen.working .vo-code-line:nth-child(1) {
+  width: 70%;
+  background: #60a5fa;
+  animation: code-scroll 1.2s infinite ease-in-out;
+}
+.vo-monitor-screen.working .vo-code-line:nth-child(2) {
+  width: 90%;
+  background: #38bdf8;
+  animation: code-scroll 1.2s infinite 0.3s ease-in-out;
+}
+.vo-monitor-screen.working .vo-code-line:nth-child(3) {
+  width: 50%;
+  background: #818cf8;
+  animation: code-scroll 1.2s infinite 0.6s ease-in-out;
+}
+
+@keyframes code-scroll {
+  0% { opacity: 0.3; transform: scaleX(0.8); }
+  50% { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 0.3; transform: scaleX(0.8); }
+}
+
+/* Keyboard & Mouse */
+.vo-desk-accessories {
+  width: 140px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.vo-keyboard {
+  width: 80px;
+  height: 10px;
+  background: #475569;
+  border-radius: 2px;
+  box-shadow: inset 0 2px 0 #94a3b8;
+}
+
+.vo-mouse {
+  width: 12px;
+  height: 16px;
+  background: #475569;
+  border-radius: 6px;
+  box-shadow: inset 0 2px 0 #94a3b8;
+}
+
+/* AGENT PIXEL AVATAR */
+.vo-agent-avatar-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 3px solid #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  margin-top: -18px;
+  z-index: 5;
+  background: #1e293b;
+  position: relative;
+}
+
+/* Speech Bubble */
+.vo-speech-bubble {
+  position: absolute;
+  top: -38px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  border: 2px solid #0f172a;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: float-bubble 2s infinite ease-in-out alternate;
+}
+
+.vo-speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 7px 6px 0;
+  border-style: solid;
+  border-color: #ffffff transparent;
+  display: block;
+  width: 0;
+}
+
+@keyframes float-bubble {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-4px); }
+}
+
+/* --- MODAL DE INSPEÇÃO DO AGENTE --- */
+.vo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(6px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.vo-modal-card {
+  background: var(--bg-card, #ffffff);
+  border: 2px solid var(--border-color, #cbd5e1);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.dark .vo-modal-card {
+  background: #0f172a;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+.vo-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vo-modal-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.vo-prompt-box {
+  background: var(--bg-muted, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  padding: 1rem;
+  font-family: monospace;
+  font-size: 0.8125rem;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.dark .vo-prompt-box {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.vo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.vo-btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+}
+.vo-btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.vo-btn-secondary {
+  background: var(--bg-muted, #f1f5f9);
+  color: var(--text-primary, #1e293b);
+  border: 1px solid var(--border-color, #cbd5e1);
+}
+
+/* Responsive adjust */
+@media (max-width: 768px) {
+  .vo-stage {
+    min-height: 750px;
+  }
+  .vo-desks-grid {
+    margin-top: 180px;
+    grid-template-columns: 1fr;
+  }
+  .vo-whiteboard {
+    display: none;
+  }
+}

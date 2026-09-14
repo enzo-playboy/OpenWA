@@ -58,6 +58,8 @@
     "dashboard": "Dashboard",
     "sessions": "Sessions",
     "chats": "Chats",
+    "aiAgent": "AI Agents",
+    "virtualOffice": "Virtual Office",
     "webhooks": "Webhooks",
     "templates": "Templates",
     "apiKeys": "API Keys",

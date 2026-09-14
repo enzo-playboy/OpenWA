@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AiAgentService } from './ai-agent.service';
+import { AgencyAgentTemplatesService } from './agency-agent-templates.service';
 import { AiAgentConfig } from './entities/ai-agent-config.entity';
 import { AiKnowledge } from './entities/ai-knowledge.entity';
 import { AiLog } from './entities/ai-log.entity';
@@ -8,7 +9,10 @@ import { AiLog } from './entities/ai-log.entity';
 @ApiTags('ai-agent')
 @Controller('ai-agent')
 export class AiAgentController {
-  constructor(private readonly aiAgentService: AiAgentService) {}
+  constructor(
+    private readonly aiAgentService: AiAgentService,
+    private readonly agencyAgentTemplatesService: AgencyAgentTemplatesService,
+  ) {}
 
   @Get('config')
   @ApiOperation({ summary: 'Obter configuração atual do Agente de IA' })
@@ -20,6 +24,30 @@ export class AiAgentController {
   @ApiOperation({ summary: 'Atualizar configuração do Agente de IA' })
   updateConfig(@Body() body: Partial<AiAgentConfig>): Promise<AiAgentConfig> {
     return this.aiAgentService.updateConfig(body);
+  }
+
+  @Get('templates/categories')
+  @ApiOperation({ summary: 'Listar categorias disponíveis nos agentes de agência' })
+  getAgencyCategories() {
+    return this.agencyAgentTemplatesService.getCategories();
+  }
+
+  @Get('templates')
+  @ApiOperation({ summary: 'Listar todos os templates de agentes de agência disponíveis' })
+  getAgencyTemplates(@Query('category') category?: string) {
+    return this.agencyAgentTemplatesService.getAllTemplates(category);
+  }
+
+  @Get('templates/:slug')
+  @ApiOperation({ summary: 'Obter detalhes e o prompt completo de um agente de agência' })
+  getAgencyTemplateBySlug(@Param('slug') slug: string) {
+    return this.agencyAgentTemplatesService.getTemplateBySlug(slug);
+  }
+
+  @Post('templates/apply/:slug')
+  @ApiOperation({ summary: 'Aplicar o prompt de um agente de agência ao agente de IA ativo' })
+  applyAgencyTemplate(@Param('slug') slug: string): Promise<AiAgentConfig> {
+    return this.agencyAgentTemplatesService.applyTemplateToConfig(slug);
   }
 
   @Get('knowledge')
@@ -87,3 +115,4 @@ export class AiAgentController {
     return { chatId, paused: isPaused };
   }
 }
+

@@ -58,6 +58,8 @@
     "dashboard": "Painel",
     "sessions": "Sessões",
     "chats": "Chats",
+    "aiAgent": "Agentes IA",
+    "virtualOffice": "Escritório Virtual",
     "webhooks": "Webhooks",
     "apiKeys": "Chaves API",
     "messageTester": "Testador de mensagens",

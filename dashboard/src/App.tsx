@@ -25,6 +25,7 @@ const Infrastructure = lazy(() => import('./pages/Infrastructure').then(m => ({ 
 const Plugins = lazy(() => import('./pages/Plugins'));
 const AiAgent = lazy(() => import('./pages/AiAgent'));
 const Kanban = lazy(() => import('./pages/Kanban'));
+const VirtualOffice = lazy(() => import('./pages/VirtualOffice'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -115,6 +116,7 @@ function AppContent() {
               <Route path="sessions" element={<Sessions />} />
               <Route path="chats" element={<Chats />} />
               <Route path="ai-agent" element={<AiAgent />} />
+              <Route path="virtual-office" element={<VirtualOffice />} />
               <Route path="kanban" element={<Kanban />} />
               <Route path="webhooks" element={<Webhooks />} />
               <Route path="templates" element={<Templates />} />

@@ -94,7 +94,16 @@ export class CadenceService {
         ? cleanPhone
         : `${cleanPhone}@c.us`;
 
-      // Check if lead is already in this cadence and active
+      // Trava de Isolamento Exclusivo Multi-Chip: impede que o mesmo lead receba mensagens de chips diferentes
+      const existingInAnySession = await this.leadProgressRepository.findOne({
+        where: { phone: formattedPhone, status: 'active' }
+      });
+
+      if (existingInAnySession && existingInAnySession.sessionId !== cadence.sessionId) {
+        this.logger.warn(`Lead ${formattedPhone} já está em atendimento ativo no Chip (${existingInAnySession.sessionId}). Operação bloqueada para o Chip ${cadence.sessionId}.`);
+        continue;
+      }
+
       let progress = await this.leadProgressRepository.findOne({
         where: { cadenceId, phone: formattedPhone },
       });
@@ -108,13 +117,15 @@ export class CadenceService {
           variables: leadDto.variables ?? null,
           currentStep: 0,
           status: 'active',
-          nextRunAt: now, // Run step 1 immediately or within jitter window
+          nextRunAt: now,
         });
       } else {
         progress.status = 'active';
         progress.currentStep = 0;
         progress.nextRunAt = now;
       }
+
+
 
       enrolled.push(await this.leadProgressRepository.save(progress));
     }

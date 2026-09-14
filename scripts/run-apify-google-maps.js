@@ -33,7 +33,7 @@ async function main() {
     ? positionalArgs.slice(1)
     : configuredTerms.length > 0
       ? configuredTerms
-      : ['relojoaria', 'petshop', 'marcenaria', 'oficina mecanica', 'salao de beleza'];
+      : ['relojoaria', 'joalheria', 'clinica estetica', 'odontologia estetica', 'marcenaria planejado', 'optica'];
   const actorId = process.env.APIFY_GOOGLE_PLACES_ACTOR || 'compass~crawler-google-places';
   const maxCrawledPlacesPerSearch = readPositiveInteger(
     process.env.APIFY_MAX_RESULTS_PER_SEARCH,

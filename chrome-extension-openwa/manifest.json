@@ -1,21 +1,46 @@
 {
   "manifest_version": 3,
-  "name": "OpenWA - Controle Sofia IA para WhatsApp Web",
-  "version": "1.0.0",
-  "description": "Controle em tempo real da IA Sofia direto na tela do WhatsApp Web. Pause ou ative o atendimento de qualquer conversa com um clique.",
+  "name": "OpenWA - Lead Hunter & Controle Sofia IA",
+  "version": "1.1.0",
+  "description": "Filtro inteligente de ICP no Google Maps em tempo real e controle do bot Sofia no WhatsApp Web.",
   "permissions": [
+    "storage",
     "activeTab"
   ],
   "host_permissions": [
+    "https://*.google.com/maps/*",
+    "https://*.google.com.br/maps/*",
     "https://web.whatsapp.com/*",
     "http://localhost:2785/*",
     "http://127.0.0.1:2785/*"
   ],
+  "action": {
+    "default_popup": "popup.html"
+  },
   "content_scripts": [
     {
-      "matches": ["https://web.whatsapp.com/*"],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.google.com/maps/*",
+        "https://www.google.com.br/maps/*"
+      ],
+      "js": [
+        "maps-content.js"
+      ],
+      "css": [
+        "maps-styles.css"
+      ],
       "run_at": "document_idle"
     }
   ]

@@ -1,0 +1,308 @@
+/* =========================================================
+   OPENWA LEAD HUNTER - ULTRA PREMIUM GLASSMORPHISM UI (MAPS)
+   ========================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --ow-bg-main: rgba(15, 23, 42, 0.92);
+  --ow-bg-card: rgba(30, 41, 59, 0.95);
+  --ow-primary: #3b82f6;
+  --ow-primary-hover: #2563eb;
+  --ow-success: #10b981;
+  --ow-gold: #f59e0b;
+  --ow-danger: #ef4444;
+  --ow-border: rgba(255, 255, 255, 0.12);
+  --ow-text-main: #f8fafc;
+  --ow-text-sub: #94a3b8;
+  --ow-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Floating Top Toolbar */
+.openwa-maps-bar {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 999999;
+  background: var(--ow-bg-main);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--ow-text-main);
+  border: 1px solid var(--ow-border);
+  border-radius: 14px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--ow-shadow);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  transition: all 0.3s ease;
+}
+
+.openwa-bar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 14px;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.3px;
+}
+
+.openwa-bar-stat-pill {
+  background: rgba(30, 41, 59, 0.8);
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ow-text-sub);
+}
+
+.openwa-bar-stat-pill strong {
+  color: #4ade80;
+  font-weight: 800;
+}
+
+.openwa-btn-main {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  color: #ffffff !important;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.openwa-btn-main:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
+  filter: brightness(1.1);
+}
+
+.openwa-btn-export-bulk {
+  background: linear-gradient(135deg, #059669, #10b981);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+}
+
+.openwa-btn-export-bulk:hover {
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.5);
+}
+
+/* FLOATING FILTER CONTROL PANEL */
+.openwa-filter-panel {
+  position: fixed;
+  top: 68px;
+  right: 16px;
+  z-index: 999998;
+  width: 350px;
+  background: var(--ow-bg-main);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--ow-text-main);
+  border: 1px solid var(--ow-border);
+  border-radius: 16px;
+  padding: 18px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: openwa-slide-down 0.25s ease-out;
+}
+
+@keyframes openwa-slide-down {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.openwa-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--ow-border);
+  padding-bottom: 10px;
+  font-weight: 800;
+  font-size: 15px;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.openwa-panel-close {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: var(--ow-text-sub);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.openwa-panel-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.openwa-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.openwa-form-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ow-text-sub);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.openwa-input-field,
+.openwa-select-field {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--ow-border);
+  border-radius: 8px;
+  color: var(--ow-text-main);
+  font-size: 13px;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+.openwa-input-field:focus,
+.openwa-select-field:focus {
+  outline: none;
+  border-color: var(--ow-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+/* Badges on Google Maps Place Cards */
+.openwa-icp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 8px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  letter-spacing: -0.2px;
+}
+
+.openwa-icp-gold {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #ffffff;
+  border: 1px solid #34d399;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+  animation: openwa-glow-pulse 2s infinite alternate;
+}
+
+.openwa-icp-disqualified {
+  background: rgba(51, 65, 85, 0.8);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@keyframes openwa-glow-pulse {
+  0% { transform: scale(1); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+  100% { transform: scale(1.02); box-shadow: 0 6px 18px rgba(16, 185, 129, 0.6); }
+}
+
+/* Dimmed Disqualified Cards & Reordering Styles */
+.openwa-dimmed-place {
+  opacity: 0.35 !important;
+  filter: grayscale(0.8) !important;
+  order: 9999 !important;
+  transition: all 0.3s ease;
+}
+
+.openwa-dimmed-place:hover {
+  opacity: 0.85 !important;
+  filter: grayscale(0) !important;
+}
+
+.openwa-prioritized-place {
+  order: 1 !important;
+  border-left: 4px solid #10b981 !important;
+  background: rgba(16, 185, 129, 0.05) !important;
+  transition: all 0.3s ease;
+}
+
+/* Individual Export Button on Card */
+.openwa-export-btn {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  color: #ffffff !important;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  margin-left: 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.35);
+  transition: all 0.2s ease;
+}
+
+.openwa-export-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.15);
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.5);
+}
+
+.openwa-export-btn.sent {
+  background: linear-gradient(135deg, #059669, #10b981);
+  box-shadow: none;
+}
+
+/* Toast Notice */
+.openwa-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999999;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  color: #ffffff;
+  border: 1px solid #34d399;
+  padding: 14px 22px;
+  border-radius: 12px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: openwa-bounce-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes openwa-bounce-in {
+  from { transform: translateY(80px) scale(0.9); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
