@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cadence } from './entities/cadence.entity';
@@ -100,9 +101,10 @@ export class CadenceService {
       });
 
       if (existingInAnySession && existingInAnySession.sessionId !== cadence.sessionId) {
-        this.logger.warn(`Lead ${formattedPhone} já está em atendimento ativo no Chip (${existingInAnySession.sessionId}). Operação bloqueada para o Chip ${cadence.sessionId}.`);
+        Logger.warn(`Lead ${formattedPhone} já está em atendimento ativo no Chip (${existingInAnySession.sessionId}). Operação bloqueada para o Chip ${cadence.sessionId}.`, 'CadenceService');
         continue;
       }
+
 
       let progress = await this.leadProgressRepository.findOne({
         where: { cadenceId, phone: formattedPhone },
