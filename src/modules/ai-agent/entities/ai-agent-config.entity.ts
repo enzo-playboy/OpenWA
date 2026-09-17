@@ -11,7 +11,11 @@ export class AiAgentConfig {
   @Column({ default: 'openrouter' })
   provider!: string;
 
-  @Column({ type: 'text', default: 'Você é um assistente de vendas e atendimento ao cliente educado, eficiente e direto ao ponto. Responda em português do Brasil de forma clara e amigável.' })
+  @Column({
+    type: 'text',
+    default:
+      'Você é um assistente de vendas e atendimento ao cliente educado, eficiente e direto ao ponto. Responda em português do Brasil de forma clara e amigável.',
+  })
   systemPrompt!: string;
 
   @Column({ default: 'google/gemini-2.5-flash-free' })

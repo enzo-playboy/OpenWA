@@ -20,10 +20,7 @@ export class CadenceController {
   @Post()
   @ApiOperation({ summary: 'Criar uma nova régua de cadência de até 10 toques com regras anti-ban' })
   @ApiParam({ name: 'sessionId', description: 'ID da sessão do WhatsApp' })
-  create(
-    @Param('sessionId') sessionId: string,
-    @Body() dto: CreateCadenceDto,
-  ) {
+  create(@Param('sessionId') sessionId: string, @Body() dto: CreateCadenceDto) {
     dto.sessionId = sessionId;
     return this.cadenceService.createCadence(dto);
   }
@@ -42,10 +39,15 @@ export class CadenceController {
   }
 
   @Get('supabase-config')
-  @ApiOperation({ summary: 'Retorna configuração do Supabase para o Dashboard Kanban (sem expor a chave privada completa)' })
+  @ApiOperation({
+    summary: 'Retorna configuração do Supabase para o Dashboard Kanban (sem expor a chave privada completa)',
+  })
   getSupabaseConfig() {
     const url = process.env.SUPABASE_URL || this.configService.get<string>('SUPABASE_URL');
-    const key = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || this.configService.get<string>('SUPABASE_KEY');
+    const key =
+      process.env.SUPABASE_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      this.configService.get<string>('SUPABASE_KEY');
     const table = process.env.SUPABASE_LEADS_TABLE || this.configService.get<string>('SUPABASE_LEADS_TABLE') || 'leads';
 
     if (!url || !key) {
@@ -68,13 +70,8 @@ export class CadenceController {
 
   @Post('supabase-leads/stage')
   @ApiOperation({ summary: 'Atualiza a etapa (stage) de um lead no Supabase' })
-  updateSupabaseLeadStage(
-    @Body() body: { id?: string; phone?: string; stage: string },
-  ) {
-    return this.supabaseSync.updateLeadStageInSupabase(
-      { id: body.id, phone: body.phone },
-      body.stage,
-    );
+  updateSupabaseLeadStage(@Body() body: { id?: string; phone?: string; stage: string }) {
+    return this.supabaseSync.updateLeadStageInSupabase({ id: body.id, phone: body.phone }, body.stage);
   }
 
   @Post('supabase-leads/create')

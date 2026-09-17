@@ -130,7 +130,8 @@ export class MessageProjector {
   private resolveAiAgentService(): AiAgentService | undefined {
     if (!this.aiAgentService && this.moduleRef) {
       try {
-        const { AiAgentService } = require('../ai-agent/ai-agent.service') as typeof import('../ai-agent/ai-agent.service');
+        const { AiAgentService } =
+          require('../ai-agent/ai-agent.service') as typeof import('../ai-agent/ai-agent.service');
         this.aiAgentService = this.moduleRef.get(AiAgentService, { strict: false });
       } catch {
         return undefined;
@@ -387,7 +388,6 @@ export class MessageProjector {
             finalMessage.type === 'voice' ||
             (typeof finalMessage.media?.mimetype === 'string' && finalMessage.media.mimetype.startsWith('audio/'));
 
-
           if (isAudioType && finalMessage.media?.data) {
             void aiAgentSvc
               .handleInboundLeadAudioMessage(id, chatId, finalMessage.media.data, finalMessage.media.mimetype)
@@ -401,7 +401,6 @@ export class MessageProjector {
             });
           }
         }
-
       }
     }
 
@@ -534,10 +533,19 @@ export class MessageProjector {
           } else if (bodyText === '#ativar-tudo' || bodyText === '#ativar-sofia') {
             void aiAgentSvc.updateConfig({ autoReplyOnLeadMessage: true });
             this.logger.log(`[Sofia AI] Resposta automática GLOBAL ATIVADA via comando remoto '${bodyText}'`);
-          } else if (!metadata?.isAiGenerated) {
-            // Pausa a Sofia automaticamente se um humano responder manualmente na conversa pelo celular
+          } else if (bodyText === '#limpar-pausas' || bodyText === '#unpause-all') {
+            aiAgentSvc.clearAllPausedChats();
+            this.logger.log(`[Sofia AI] Todas as pausas individuais foram LIMPAS via comando remoto '${bodyText}'`);
+          } else if (
+            !metadata?.isAiGenerated &&
+            !metadata?.isApiSend &&
+            !metadata?.isOutreach &&
+            !metadata?.isCampaign &&
+            !metadata?.skipPause
+          ) {
+            // Pausa a Sofia apenas se um humano digitar manualmente na conversa pelo celular (e não via script/API)
             aiAgentSvc.togglePauseChat(chatId, true);
-            this.logger.log(`[Sofia AI] Pausada automaticamente para ${chatId} devido a intervenção humana.`);
+            this.logger.log(`[Sofia AI] Pausada para ${chatId} devido a intervenção manual do operador.`);
           }
         }
 

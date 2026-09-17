@@ -19,7 +19,7 @@ export class CadenceStep {
   @Column({ type: 'uuid' })
   cadenceId!: string;
 
-  @ManyToOne(() => Cadence, (cadence) => cadence.steps, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Cadence, cadence => cadence.steps, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'cadenceId' })
   cadence!: Cadence;
 

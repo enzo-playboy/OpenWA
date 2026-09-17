@@ -1,12 +1,4 @@
-import {
-  Entity,
-  Column,
-  Index,
-  PrimaryGeneratedColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToMany,
-} from 'typeorm';
+import { Entity, Column, Index, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { CadenceStep } from './cadence-step.entity';
 import { LeadCadenceProgress } from './lead-cadence-progress.entity';
 
@@ -50,10 +42,10 @@ export class Cadence {
   @Column({ type: 'int', default: 100 })
   dailyLimit!: number;
 
-  @OneToMany(() => CadenceStep, (step) => step.cadence, { cascade: true })
+  @OneToMany(() => CadenceStep, step => step.cadence, { cascade: true })
   steps!: CadenceStep[];
 
-  @OneToMany(() => LeadCadenceProgress, (lead) => lead.cadence)
+  @OneToMany(() => LeadCadenceProgress, lead => lead.cadence)
   leads!: LeadCadenceProgress[];
 
   @CreateDateColumn()

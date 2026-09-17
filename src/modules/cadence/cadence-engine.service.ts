@@ -8,10 +8,16 @@ import { LeadCadenceProgress } from './entities/lead-cadence-progress.entity';
 import { MessageService } from '../message/message.service';
 import { createLogger } from '../../common/services/logger.service';
 import { SupabaseSyncService } from './supabase-sync.service';
+import {
+  isProtectedContact,
+  resolveChipForNiche,
+  validateChipInterval,
+  recordChipSentTimestamp,
+} from './cadence-guard.helper';
 
 function parseSpintax(text: string): string {
   const spintaxRegex = /\{([^{}]+)\}/g;
-  return text.replace(spintaxRegex, (match, choices) => {
+  return text.replace(spintaxRegex, (_match: string, choices: string) => {
     const options = choices.split('|');
     return options[Math.floor(Math.random() * options.length)].trim();
   });
@@ -64,8 +70,10 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('Starting Cadence Engine (10-Touch Follow-up Processor)...');
     // Run ticker every 15 seconds
     this.intervalId = setInterval(() => {
-      this.processDueCadenceSteps().catch((err) => {
-        this.logger.error(`Error in Cadence Engine tick: ${err.message}`, err.stack);
+      this.processDueCadenceSteps().catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        this.logger.error(`Error in Cadence Engine tick: ${msg}`, stack);
       });
     }, 15000);
   }
@@ -80,13 +88,13 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
    * Listen to inbound WhatsApp messages.
    * If StopOnReply is enabled and the lead responds, pause follow-up immediately.
    */
-  async handleInboundMessage(sessionId: string, message: any) {
+  async handleInboundMessage(sessionId: string, message: Record<string, any>) {
     if (!message || message.fromMe) return;
 
-    const fromJid = message.from || message.chatId || '';
+    const fromJid = String(message.from || message.chatId || '');
     if (!fromJid) return;
 
-    const rawPhone = String(fromJid).split('@')[0];
+    const rawPhone = fromJid.split('@')[0];
     const cleanPhone = `${rawPhone}@c.us`;
 
     const activeLeads = await this.leadProgressRepository.find({
@@ -110,9 +118,7 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
           last_reply_text: String(message.body || ''),
         });
 
-        this.logger.log(
-          `[StopOnReply] Lead ${lead.phone} replied! Paused 10-touch cadence ${lead.cadenceId}`,
-        );
+        this.logger.log(`[StopOnReply] Lead ${lead.phone} replied! Paused 10-touch cadence ${lead.cadenceId}`);
       }
     }
   }
@@ -146,6 +152,32 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
 
       for (const lead of dueLeads) {
         if (!lead.cadence || !lead.cadence.enabled) continue;
+
+        // Guard: Contato protegido em atendimento manual
+        if (isProtectedContact(lead.phone)) {
+          this.logger.warn(
+            `[Guard Blocked] Lead ${lead.phone} está sob guarda de atendimento manual. Cadência pausada.`,
+          );
+          lead.status = 'manual_protected_paused';
+          lead.nextRunAt = null;
+          await this.leadProgressRepository.save(lead);
+          continue;
+        }
+
+        // Roteamento inteligente de chip por nicho
+        const targetChip = resolveChipForNiche(String(lead.variables?.nicho || lead.cadence?.name || ''));
+        const targetSessionId = lead.sessionId || targetChip.sessionId;
+
+        // Guard: Trava de intervalo de 6 minutos (360s) por chip
+        const intervalCheck = validateChipInterval(targetSessionId, 360);
+        if (!intervalCheck.valid) {
+          this.logger.log(
+            `[Guard Delay] Chip ${targetSessionId} aguardando intervalo seguro (restam ${intervalCheck.remainingSeconds}s). Reagendando lead ${lead.phone}.`,
+          );
+          lead.nextRunAt = new Date(Date.now() + (intervalCheck.remainingSeconds + 5) * 1000);
+          await this.leadProgressRepository.save(lead);
+          continue;
+        }
 
         if (!this.isWithinWorkingHours(lead.cadence)) {
           // Reschedule for next morning inside working hours
@@ -186,10 +218,11 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
 
           const messageSvc = this.getMessageService();
           if (messageSvc) {
-            await messageSvc.sendText(lead.sessionId, {
+            await messageSvc.sendText(targetSessionId, {
               chatId: lead.phone,
               text: messageText,
             });
+            recordChipSentTimestamp(targetSessionId);
           }
 
           // Update progress
@@ -226,9 +259,10 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
 
           lead.lastError = null;
           await this.leadProgressRepository.save(lead);
-        } catch (err: any) {
-          this.logger.error(`Failed to send cadence step to ${lead.phone}: ${err.message}`);
-          lead.lastError = err.message || 'Send failure';
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          this.logger.error(`Failed to send cadence step to ${lead.phone}: ${errMsg}`);
+          lead.lastError = errMsg;
           // Retry in 10 minutes
           lead.nextRunAt = new Date(Date.now() + 10 * 60 * 1000);
           await this.leadProgressRepository.save(lead);
@@ -236,10 +270,85 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
 
         // Anti-ban delay between different leads in the batch
         const batchJitter = Math.floor(Math.random() * 5000) + 3000;
-        await new Promise((res) => setTimeout(res, batchJitter));
+        await new Promise(res => setTimeout(res, batchJitter));
       }
     } finally {
       this.isProcessing = false;
     }
+  }
+
+  /**
+   * Switches a lead to a new cadence (e.g. nurture sequence).
+   * Resets step counter to 0 and sets status back to 'active'.
+   */
+  async switchCadence(leadPhoneOrId: string, targetCadenceId: string): Promise<LeadCadenceProgress | null> {
+    let lead = await this.leadProgressRepository.findOne({
+      where: [{ id: leadPhoneOrId }, { phone: leadPhoneOrId }],
+    });
+
+    if (!lead) {
+      this.logger.warn(`Cannot switch cadence: lead ${leadPhoneOrId} not found`);
+      return null;
+    }
+
+    // Resolve target cadence by ID or Name
+    let targetCadence = await this.cadenceRepository.findOne({ where: { id: targetCadenceId } });
+    if (!targetCadence) {
+      targetCadence = await this.cadenceRepository.findOne({ where: { name: targetCadenceId } });
+    }
+
+    const cadenceIdToUse = targetCadence ? targetCadence.id : targetCadenceId;
+
+    lead.cadenceId = cadenceIdToUse;
+    lead.currentStep = 0;
+    lead.status = 'nurture_cadence';
+    lead.nextRunAt = new Date(Date.now() + 60 * 1000); // Start nurture in 1 minute
+    lead.lastError = null;
+
+    lead = await this.leadProgressRepository.save(lead);
+    this.logger.log(`Switched lead ${lead.phone} to cadence ${cadenceIdToUse}`);
+
+    void this.supabaseSync.updateLeadStatusInSupabase(lead.phone, {
+      status: 'nurture_cadence',
+      current_step: 0,
+    });
+
+    return lead;
+  }
+
+  /**
+   * Resumes cadence progress for a lead from their last step, optionally injecting contextual variables.
+   */
+  async resumeFromLastStep(leadPhoneOrId: string, contextMessage?: string): Promise<LeadCadenceProgress | null> {
+    let lead = await this.leadProgressRepository.findOne({
+      where: [{ id: leadPhoneOrId }, { phone: leadPhoneOrId }],
+    });
+
+    if (!lead) {
+      this.logger.warn(`Cannot resume cadence: lead ${leadPhoneOrId} not found`);
+      return null;
+    }
+
+    if (contextMessage) {
+      lead.variables = {
+        ...(lead.variables || {}),
+        reengageContext: contextMessage,
+      };
+    }
+
+    lead.status = 'reengaged';
+    lead.nextRunAt = new Date(Date.now() + 30 * 1000); // Schedule next step in 30 seconds
+    lead.lastError = null;
+
+    lead = await this.leadProgressRepository.save(lead);
+    this.logger.log(
+      `Resumed cadence for lead ${lead.phone} (step ${lead.currentStep}) with context: "${contextMessage || 'none'}"`,
+    );
+
+    void this.supabaseSync.updateLeadStatusInSupabase(lead.phone, {
+      status: 'reengaged',
+    });
+
+    return lead;
   }
 }

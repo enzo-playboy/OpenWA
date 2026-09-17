@@ -1,13 +1,4 @@
-import {
-  IsString,
-  IsBoolean,
-  IsOptional,
-  IsNumber,
-  IsArray,
-  ValidateNested,
-  Min,
-  Max,
-} from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsNumber, IsArray, ValidateNested, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateCadenceStepDto {

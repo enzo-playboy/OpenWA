@@ -24,23 +24,25 @@ export class InstagramService {
    */
   async sendMessage(recipientIgId: string, text: string): Promise<boolean> {
     if (!this.isConfigured()) {
-      this.logger.warn('Tentativa de envio no Instagram ignorada. Variáveis IG_PAGE_ACCESS_TOKEN ou IG_PAGE_ID não configuradas.');
+      this.logger.warn(
+        'Tentativa de envio no Instagram ignorada. Variáveis IG_PAGE_ACCESS_TOKEN ou IG_PAGE_ID não configuradas.',
+      );
       return false;
     }
 
     const url = `https://graph.facebook.com/${this.graphApiVersion}/${this.pageId}/messages`;
-    
+
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.pageAccessToken}`
+          Authorization: `Bearer ${this.pageAccessToken}`,
         },
         body: JSON.stringify({
           recipient: { id: recipientIgId },
-          message: { text }
-        })
+          message: { text },
+        }),
       });
 
       if (!response.ok) {

@@ -10,6 +10,7 @@ import { Message } from '../message/entities/message.entity';
 import { createLogger } from '../../common/services/logger.service';
 import { MessageService } from '../message/message.service';
 import { GroqTranscriptionService } from './groq-transcription.service';
+import { LlmProviderChainService } from './llm-provider-chain.service';
 import { InstagramService } from '../instagram/instagram.service';
 
 export interface ChatMessageContext {
@@ -35,11 +36,11 @@ export class AiAgentService implements OnModuleInit {
     private readonly configService?: ConfigService,
     @Optional() private readonly moduleRef?: ModuleRef,
     @Optional() private readonly groqTranscriptionService?: GroqTranscriptionService,
+    @Optional() private readonly llmProviderChain?: LlmProviderChainService,
     @Optional()
     @Inject(forwardRef(() => InstagramService))
     private readonly instagramService?: InstagramService,
   ) {}
-
 
   onModuleInit() {
     this.logger.log('AI Agent Service initialized.');
@@ -54,6 +55,66 @@ export class AiAgentService implements OnModuleInit {
 
   private readonly messageBuffers = new Map<string, { timer: NodeJS.Timeout; messages: string[] }>();
   private readonly pausedChats = new Set<string>();
+  private globalKillSwitchActive = false;
+
+  toggleGlobalKillSwitch(active?: boolean): { globalKillSwitchActive: boolean } {
+    this.globalKillSwitchActive = active !== undefined ? active : !this.globalKillSwitchActive;
+    this.logger.warn(
+      `[ Sofia AI Kill Switch ] Global AI Auto-reply set to: ${this.globalKillSwitchActive ? 'DISABLED (OFF)' : 'ACTIVE (ON)'}`,
+    );
+    return { globalKillSwitchActive: this.globalKillSwitchActive };
+  }
+
+  isGlobalKillSwitchActive(): boolean {
+    return this.globalKillSwitchActive;
+  }
+
+  /**
+   * Evaluator Anti-Clichê & Anti-Bot: limpa frases robóticas antes do envio.
+   */
+  evaluateAndCleanResponse(reply: string): string {
+    if (!reply) return reply;
+
+    let cleaned = reply;
+    const clicheReplacements: [RegExp, string][] = [
+      [/^certamente[!,.]?\s*/i, ''],
+      [/estou à disposição para auxiliar/gi, 'qualquer dúvida me avisa!'],
+      [/como posso ajudá-lo hoje\??/gi, 'como posso te ajudar?'],
+      [/prezado\(a\)\s+cliente/gi, 'oi!'],
+      [/com certeza[!,.]?\s*/i, ''],
+    ];
+
+    for (const [regex, replacement] of clicheReplacements) {
+      cleaned = cleaned.replace(regex, replacement);
+    }
+
+    return cleaned.trim();
+  }
+
+  /**
+   * Detecta se a mensagem exige transferência para um atendente humano.
+   */
+  shouldHandoffToHuman(userMessage: string): { handoff: boolean; reason?: string } {
+    if (!userMessage) return { handoff: false };
+    const norm = userMessage.toLowerCase();
+
+    if (norm.includes('falar com humano') || norm.includes('atendente') || norm.includes('pessoa real')) {
+      return { handoff: true, reason: 'Solicitação explícita de atendente humano' };
+    }
+    if (
+      norm.includes('procon') ||
+      norm.includes('reclame aqui') ||
+      norm.includes('processo') ||
+      norm.includes('reembolso')
+    ) {
+      return { handoff: true, reason: 'Reclamação ou pedido de reembolso/suporte avançado' };
+    }
+    if (norm.includes('enterprise') || norm.includes('acima de 100k') || norm.includes('projeto grande')) {
+      return { handoff: true, reason: 'Lead Enterprise de alto valor' };
+    }
+
+    return { handoff: false };
+  }
 
   togglePauseChat(chatId: string, pause?: boolean): { chatId: string; paused: boolean } {
     const cleanId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
@@ -75,6 +136,13 @@ export class AiAgentService implements OnModuleInit {
 
   getPausedChats(): string[] {
     return Array.from(this.pausedChats);
+  }
+
+  clearAllPausedChats(): { cleared: number } {
+    const count = this.pausedChats.size;
+    this.pausedChats.clear();
+    this.logger.log(`[Sofia AI] Cleared all ${count} paused chats. All chats unpaused.`);
+    return { cleared: count };
   }
 
   async getConfig(): Promise<AiAgentConfig> {
@@ -140,15 +208,23 @@ export class AiAgentService implements OnModuleInit {
     const startTime = Date.now();
     const config = await this.getConfig();
 
-    if (!config.enabled) {
-      throw new Error('AI Agent is disabled');
+    if (!config.enabled || this.isGlobalKillSwitchActive()) {
+      throw new Error('AI Agent is disabled or Kill Switch is ACTIVE');
+    }
+
+    // Check Handoff para atendente humano
+    const handoffCheck = this.shouldHandoffToHuman(userMessage);
+    if (handoffCheck.handoff) {
+      this.logger.warn(`[Handoff Triggered] Chat ${chatId || 'unknown'}: ${handoffCheck.reason}`);
+      if (chatId) {
+        this.togglePauseChat(chatId, true);
+      }
+      return `[Transferido para Atendimento Humano: ${handoffCheck.reason}] Olá! Um de nossos consultores humanos assumirá o atendimento por aqui em breve.`;
     }
 
     // 1. Carregar Base de Conhecimento Ativa
     const activeKnowledge = await this.knowledgeRepo.find({ where: { isActive: true } });
-    const knowledgeContext = activeKnowledge
-      .map((k) => `[${k.title} (${k.category})]\n${k.content}`)
-      .join('\n\n');
+    const knowledgeContext = activeKnowledge.map(k => `[${k.title} (${k.category})]\n${k.content}`).join('\n\n');
 
     // 2. Montar Instrução de Sistema Completa
     const fullSystemPrompt = `${config.systemPrompt}
@@ -170,55 +246,22 @@ Responda sempre com base nas informações fornecidas. Se não souber algo que n
       { role: 'user', content: userMessage },
     ];
 
-    // 3. Resolver credenciais e endpoint
-    const apiKey =
-      config.customApiKey ||
-      process.env.OPENAI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      '';
-    const baseUrl =
-      process.env.OPENAI_BASE_URL || 'https://openrouter.ai/api/v1';
-    const modelName = config.model || process.env.OPENAI_MODEL || 'google/gemini-2.5-flash-free';
-
     try {
-      this.logger.log(`Calling LLM API (${modelName}) via ${baseUrl}...`);
+      const chainSvc = this.llmProviderChain || new LlmProviderChainService();
+      const fallbackResult = await chainSvc.executeWithFallback(messages, sessionId || 'chip-default');
 
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://openwa.dev',
-          'X-Title': 'OpenWA AI Agent',
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
-          temperature: config.temperature,
-          max_tokens: config.maxTokens,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`LLM API returned status ${response.status}: ${errorText}`);
-      }
-
-      const data: any = await response.json();
-      const aiReply =
-        data.choices?.[0]?.message?.content?.trim() ||
-        'Desculpe, não consegui processar sua resposta no momento.';
-      const tokensUsed = data.usage?.total_tokens || 0;
+      // Evaluator Anti-Clichê pré-envio
+      const aiReply = this.evaluateAndCleanResponse(fallbackResult.reply);
       const durationMs = Date.now() - startTime;
 
-      // 4. Salvar log de interações
+      // Salvar log de interações
       const log = this.logRepo.create({
         sessionId: sessionId || 'api',
         chatId: chatId || 'playground',
         userMessage,
         aiResponse: aiReply,
-        model: modelName,
-        tokensUsed,
+        model: fallbackResult.providerUsed,
+        tokensUsed: fallbackResult.tokensUsed,
         durationMs,
         status: 'success',
       });
@@ -233,7 +276,7 @@ Responda sempre com base nas informações fornecidas. Se não souber algo que n
         chatId: chatId || 'playground',
         userMessage,
         aiResponse: '',
-        model: modelName,
+        model: config.model || 'llm-chain',
         tokensUsed: 0,
         durationMs: Date.now() - startTime,
         status: 'error',
@@ -248,7 +291,12 @@ Responda sempre com base nas informações fornecidas. Se não souber algo que n
   /**
    * Transcreve uma mensagem de áudio recebida de um lead via Groq Whisper e repassa para o handler da IA
    */
-  async handleInboundLeadAudioMessage(sessionId: string, chatId: string, audioData: Buffer | string, mimetype = 'audio/ogg') {
+  async handleInboundLeadAudioMessage(
+    sessionId: string,
+    chatId: string,
+    audioData: Buffer | string,
+    mimetype = 'audio/ogg',
+  ) {
     if (!chatId || chatId.endsWith('@g.us')) return;
     if (this.isChatPaused(chatId)) return;
 
@@ -339,9 +387,9 @@ Responda sempre com base nas informações fornecidas. Se não souber algo que n
 
           history = recentMessages
             .reverse()
-            .filter((m) => m.body && m.body.trim().length > 0)
-            .map((m) => ({
-              role: (m.direction === 'outgoing' ? 'assistant' : 'user') as 'assistant' | 'user',
+            .filter(m => m.body && m.body.trim().length > 0)
+            .map(m => ({
+              role: m.direction === 'outgoing' ? 'assistant' : 'user',
               content: m.body,
             }));
 
@@ -355,7 +403,7 @@ Responda sempre com base nas informações fornecidas. Se não souber algo que n
       }
 
       if (config.typingDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, config.typingDelayMs));
+        await new Promise(resolve => setTimeout(resolve, config.typingDelayMs));
       }
 
       const aiReply = await this.generateResponse(combinedText, history, sessionId, chatId);
@@ -377,7 +425,9 @@ Responda sempre com base nas informações fornecidas. Se não souber algo que n
             chatId,
             text: aiReply,
           });
-          this.logger.log(`AI Agent sent single debounced reply to WhatsApp ${chatId}: "${aiReply.substring(0, 50)}..."`);
+          this.logger.log(
+            `AI Agent sent single debounced reply to WhatsApp ${chatId}: "${aiReply.substring(0, 50)}..."`,
+          );
         } else {
           this.logger.warn(`MessageService unavailable; AI response was generated but not sent.`);
         }

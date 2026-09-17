@@ -41,7 +41,7 @@ export class CadenceService {
       minDelaySeconds: dto.minDelaySeconds ?? 45,
       maxDelaySeconds: dto.maxDelaySeconds ?? 120,
       dailyLimit: dto.dailyLimit ?? 100,
-      steps: dto.steps.map((s) =>
+      steps: dto.steps.map(s =>
         this.cadenceStepRepository.create({
           stepOrder: s.stepOrder,
           title: s.title,
@@ -91,20 +91,20 @@ export class CadenceService {
 
     for (const leadDto of leads) {
       const cleanPhone = leadDto.phone.replace(/\D/g, '');
-      const formattedPhone = cleanPhone.includes('@')
-        ? cleanPhone
-        : `${cleanPhone}@c.us`;
+      const formattedPhone = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@c.us`;
 
       // Trava de Isolamento Exclusivo Multi-Chip: impede que o mesmo lead receba mensagens de chips diferentes
       const existingInAnySession = await this.leadProgressRepository.findOne({
-        where: { phone: formattedPhone, status: 'active' }
+        where: { phone: formattedPhone, status: 'active' },
       });
 
       if (existingInAnySession && existingInAnySession.sessionId !== cadence.sessionId) {
-        Logger.warn(`Lead ${formattedPhone} já está em atendimento ativo no Chip (${existingInAnySession.sessionId}). Operação bloqueada para o Chip ${cadence.sessionId}.`, 'CadenceService');
+        Logger.warn(
+          `Lead ${formattedPhone} já está em atendimento ativo no Chip (${existingInAnySession.sessionId}). Operação bloqueada para o Chip ${cadence.sessionId}.`,
+          'CadenceService',
+        );
         continue;
       }
-
 
       let progress = await this.leadProgressRepository.findOne({
         where: { cadenceId, phone: formattedPhone },
@@ -126,8 +126,6 @@ export class CadenceService {
         progress.currentStep = 0;
         progress.nextRunAt = now;
       }
-
-
 
       enrolled.push(await this.leadProgressRepository.save(progress));
     }
@@ -189,7 +187,7 @@ export class CadenceService {
       return [];
     }
 
-    const enrollDtos: EnrollLeadDto[] = supabaseLeads.map((item) => ({
+    const enrollDtos: EnrollLeadDto[] = supabaseLeads.map(item => ({
       phone: item.phone,
       leadName: item.name,
       variables: item.metadata || {},
@@ -264,13 +262,21 @@ export class CadenceService {
             l => l.status === 'sent' || l.status === 'contacted' || (l.current_step && l.current_step > 0),
           ).length;
           const sbResponded = sbLeads.filter(
-            l => l.status === 'replied' || l.status === 'engaged' || l.last_reply_at || (l.metadata && (l.metadata as Record<string, unknown>).stage === 'engaged'),
+            l =>
+              l.status === 'replied' ||
+              l.status === 'engaged' ||
+              l.last_reply_at ||
+              (l.metadata && (l.metadata as Record<string, unknown>).stage === 'engaged'),
           ).length;
           const sbProposta = sbLeads.filter(
-            l => l.status === 'proposal' || (l.metadata && (l.metadata as Record<string, unknown>).stage === 'proposal'),
+            l =>
+              l.status === 'proposal' || (l.metadata && (l.metadata as Record<string, unknown>).stage === 'proposal'),
           ).length;
           const sbFechados = sbLeads.filter(
-            l => l.status === 'closed' || l.status === 'completed' || (l.metadata && (l.metadata as Record<string, unknown>).stage === 'closed'),
+            l =>
+              l.status === 'closed' ||
+              l.status === 'completed' ||
+              (l.metadata && (l.metadata as Record<string, unknown>).stage === 'closed'),
           ).length;
 
           enviados = Math.max(enviados, sbEnviados);
@@ -278,7 +284,7 @@ export class CadenceService {
           proposta = Math.max(proposta, sbProposta);
           fechados = Math.max(fechados, sbFechados);
         }
-      } catch (err) {
+      } catch {
         // Fallback para métricas locais se houver falha de rede
       }
     }

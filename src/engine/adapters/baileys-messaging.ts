@@ -133,7 +133,7 @@ export class BaileysMessaging {
   constructor(
     private readonly host: BaileysMessagingHost,
     private readonly queryBudgetMs: number = BAILEYS_QUERY_BUDGET_MS,
-  ) { }
+  ) {}
 
   /** Bound a write whose confirmation the library discards; see baileys-query-deadline.ts. */
   private confirmed<T>(work: Promise<T>, operation: string): Promise<T> {
@@ -181,13 +181,13 @@ export class BaileysMessaging {
       // never calls getUrlInfo, so nothing is fetched and the metadata is used verbatim.
       ...(sendOptions?.customPreview
         ? {
-          linkPreview: {
-            'matched-text': sendOptions.customPreview.url,
-            'canonical-url': sendOptions.customPreview.url,
-            title: sendOptions.customPreview.title,
-            ...(sendOptions.customPreview.description ? { description: sendOptions.customPreview.description } : {}),
-          },
-        }
+            linkPreview: {
+              'matched-text': sendOptions.customPreview.url,
+              'canonical-url': sendOptions.customPreview.url,
+              title: sendOptions.customPreview.title,
+              ...(sendOptions.customPreview.description ? { description: sendOptions.customPreview.description } : {}),
+            },
+          }
         : {}),
     };
     const sent = await this.sock().sendMessage(jid, content, options);

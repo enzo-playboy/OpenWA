@@ -6,16 +6,15 @@ import { LeadCadenceProgress } from './entities/lead-cadence-progress.entity';
 import { CadenceService } from './cadence.service';
 import { CadenceEngineService } from './cadence-engine.service';
 import { SupabaseSyncService } from './supabase-sync.service';
+import { CadenceLifecycleService } from './cadence-lifecycle.service';
+import { CadenceTimeoutJob } from './cadence-timeout.job';
 import { CadenceController } from './cadence.controller';
 import { MessageModule } from '../message/message.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Cadence, CadenceStep, LeadCadenceProgress], 'data'),
-    MessageModule,
-  ],
+  imports: [TypeOrmModule.forFeature([Cadence, CadenceStep, LeadCadenceProgress], 'data'), MessageModule],
   controllers: [CadenceController],
-  providers: [CadenceService, CadenceEngineService, SupabaseSyncService],
-  exports: [CadenceService, CadenceEngineService, SupabaseSyncService],
+  providers: [CadenceService, CadenceEngineService, SupabaseSyncService, CadenceLifecycleService, CadenceTimeoutJob],
+  exports: [CadenceService, CadenceEngineService, SupabaseSyncService, CadenceLifecycleService, CadenceTimeoutJob],
 })
 export class CadenceModule {}

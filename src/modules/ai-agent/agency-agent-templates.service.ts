@@ -62,14 +62,14 @@ export class AgencyAgentTemplatesService {
   getAllTemplates(category?: string): AgencyAgentTemplate[] {
     const templates = this.loadTemplates();
     if (category) {
-      return templates.filter((t) => t.category.toLowerCase() === category.toLowerCase());
+      return templates.filter(t => t.category.toLowerCase() === category.toLowerCase());
     }
     return templates;
   }
 
   getTemplateBySlug(slug: string): AgencyAgentTemplate {
     const templates = this.loadTemplates();
-    const template = templates.find((t) => t.slug === slug || t.slug.toLowerCase() === slug.toLowerCase());
+    const template = templates.find(t => t.slug === slug || t.slug.toLowerCase() === slug.toLowerCase());
     if (!template) {
       throw new NotFoundException(`Agency Agent template with slug '${slug}' not found.`);
     }

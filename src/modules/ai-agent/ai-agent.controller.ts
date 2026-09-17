@@ -64,10 +64,7 @@ export class AiAgentController {
 
   @Put('knowledge/:id')
   @ApiOperation({ summary: 'Atualizar item da Base de Conhecimento' })
-  updateKnowledge(
-    @Param('id') id: string,
-    @Body() body: Partial<AiKnowledge>,
-  ): Promise<AiKnowledge> {
+  updateKnowledge(@Param('id') id: string, @Body() body: Partial<AiKnowledge>): Promise<AiKnowledge> {
     return this.aiAgentService.updateKnowledge(id, body);
   }
 
@@ -81,10 +78,7 @@ export class AiAgentController {
   @Post('test')
   @ApiOperation({ summary: 'Testar respostas da IA (Playground)' })
   async testAi(@Body() body: { message: string; history?: any[] }): Promise<{ response: string }> {
-    const response = await this.aiAgentService.generateResponse(
-      body.message,
-      body.history || [],
-    );
+    const response = await this.aiAgentService.generateResponse(body.message, body.history || []);
     return { response };
   }
 
@@ -96,9 +90,7 @@ export class AiAgentController {
 
   @Post('chats/toggle-pause')
   @ApiOperation({ summary: 'Ativar ou Pausar IA para um chat específico' })
-  togglePauseChat(
-    @Body() body: { chatId: string; pause?: boolean },
-  ): { chatId: string; paused: boolean } {
+  togglePauseChat(@Body() body: { chatId: string; pause?: boolean }): { chatId: string; paused: boolean } {
     return this.aiAgentService.togglePauseChat(body.chatId, body.pause);
   }
 
@@ -108,6 +100,12 @@ export class AiAgentController {
     return this.aiAgentService.getPausedChats();
   }
 
+  @Delete('chats/paused')
+  @ApiOperation({ summary: 'Limpar/despausar todos os chats pausados' })
+  clearAllPausedChats(): { cleared: number } {
+    return this.aiAgentService.clearAllPausedChats();
+  }
+
   @Get('chats/status')
   @ApiOperation({ summary: 'Verificar status da IA para um determinado chat' })
   getChatStatus(@Query('chatId') chatId: string): { chatId: string; paused: boolean } {
@@ -115,4 +113,3 @@ export class AiAgentController {
     return { chatId, paused: isPaused };
   }
 }
-

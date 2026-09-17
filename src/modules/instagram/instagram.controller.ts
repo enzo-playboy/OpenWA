@@ -12,7 +12,7 @@ export class InstagramController {
     private configService: ConfigService,
     private instagramService: InstagramService,
     @Inject(forwardRef(() => AiAgentService))
-    private aiAgentService: AiAgentService
+    private aiAgentService: AiAgentService,
   ) {}
 
   /**
@@ -23,7 +23,7 @@ export class InstagramController {
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
     @Query('hub.challenge') challenge: string,
-    @Res() res: Response
+    @Res() res: Response,
   ) {
     const verifyToken = this.configService.get<string>('IG_VERIFY_TOKEN') || 'openwa_ig_webhook_secret_2026';
 
@@ -54,7 +54,7 @@ export class InstagramController {
             const text = event.message.text;
 
             this.logger.log(`Mensagem recebida do IG (${senderId}): ${text}`);
-            
+
             // Passa para o AI Agent repassar para a Sofia, identificando com o sufixo @ig
             // O sessionId é fixo "ig_session" para o AI Service
             try {

@@ -32,11 +32,7 @@ export class SupabaseSyncService {
   }
 
   private get leadsTable(): string {
-    return (
-      process.env.SUPABASE_LEADS_TABLE ||
-      this.configService.get<string>('SUPABASE_LEADS_TABLE') ||
-      'leads'
-    );
+    return process.env.SUPABASE_LEADS_TABLE || this.configService.get<string>('SUPABASE_LEADS_TABLE') || 'leads';
   }
 
   public isConfigured(): boolean {
@@ -119,10 +115,7 @@ export class SupabaseSyncService {
   /**
    * Atualizar stage e metadata do lead no Supabase pelo id ou telefone.
    */
-  async updateLeadStageInSupabase(
-    identifier: { id?: string; phone?: string },
-    stage: string,
-  ): Promise<boolean> {
+  async updateLeadStageInSupabase(identifier: { id?: string; phone?: string }, stage: string): Promise<boolean> {
     if (!this.isConfigured()) return false;
 
     try {

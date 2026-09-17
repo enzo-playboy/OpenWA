@@ -15,8 +15,13 @@ export type CadenceLeadStatus =
   | 'active'
   | 'completed'
   | 'replied_paused'
+  | 'manual_protected_paused'
   | 'stopped'
-  | 'failed';
+  | 'failed'
+  | 'qualified'
+  | 'nurture_cadence'
+  | 'manual_handoff'
+  | 'reengaged';
 
 @Entity('lead_cadence_progress')
 export class LeadCadenceProgress {
@@ -27,7 +32,7 @@ export class LeadCadenceProgress {
   @Column({ type: 'uuid' })
   cadenceId!: string;
 
-  @ManyToOne(() => Cadence, (cadence) => cadence.leads, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Cadence, cadence => cadence.leads, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'cadenceId' })
   cadence!: Cadence;
 
@@ -55,6 +60,12 @@ export class LeadCadenceProgress {
     default: 'active',
   })
   status!: CadenceLeadStatus;
+
+  @Column({ type: 'int', default: 0 })
+  reengageCycles!: number;
+
+  @Column({ type: 'text', nullable: true })
+  lastOutcomeReason!: string | null;
 
   @Index('IDX_lead_cadence_progress_nextRunAt')
   @Column({ type: 'datetime', nullable: true })
