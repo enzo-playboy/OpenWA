@@ -39,6 +39,7 @@ import { ChatMediaModule } from './modules/chat-media/chat-media.module';
 import { AutomationModule } from './modules/automation/automation.module';
 import { CadenceModule } from './modules/cadence/cadence.module';
 import { AiAgentModule } from './modules/ai-agent/ai-agent.module';
+import { AiAgentsModule } from './modules/ai-agents/ai-agents.module';
 import { InstagramModule } from './modules/instagram/instagram.module';
 import { TakeoverModule } from './modules/takeover/takeover.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
@@ -318,6 +319,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     AutomationModule, // single-message autoreply rules, evaluated on the inbound dispatch
     CadenceModule, // Régua de prospecção e follow-ups automatizados com 10 toques
     AiAgentModule, // Módulo de IA Nativo (OpenAI / OpenRouter / Gemini) e Treinamento de Dados
+    AiAgentsModule, // Agentes autônomos FASE 1 (qualificação, mensagem, guardrails, orquestrador semi-autônomo)
     InstagramModule, // Integração API Oficial Meta IG
     TakeoverModule, // adopts sessions whose holder's lease lapsed (crashed peer / recreated node)
     CatalogModule, // Phase 3: Catalog API (WhatsApp Business)

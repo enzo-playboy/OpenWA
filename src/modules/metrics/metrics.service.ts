@@ -10,6 +10,7 @@ import {
 import { getRestrictedSessionCount } from '../../common/metrics/session-restriction-metrics';
 import { getSendPacingRefusals } from '../../common/metrics/send-pacing-metrics';
 import { renderHttpRequestMetrics } from '../../common/metrics/request-metrics';
+import { renderCadenceGuardMetrics } from '../cadence/cadence-guard-metrics';
 import { createLogger } from '../../common/services/logger.service';
 
 /**
@@ -162,6 +163,11 @@ export class MetricsService {
     // HTTP RED metrics (request rate + duration per route), recorded by RequestMetricsInterceptor.
     // Included in the same cached render — a few seconds of staleness is fine for Prometheus.
     lines.push(...renderHttpRequestMetrics());
+
+    // Cadence guards (prospecção): rejections per guard type, dispatches, chip failovers and
+    // per-chip last-dispatch timestamps. Counters are lifetime totals backed by the durable
+    // snapshot, so a process restart does not read as a traffic drop. Same cached render.
+    lines.push(...(await renderCadenceGuardMetrics()));
 
     const text = lines.join('\n') + '\n';
     this.cachedRender = { at: now, text };

@@ -18,6 +18,8 @@ import { StatusStoreService } from '../status-store/status-store.service';
 import { ChatMediaArchiveService } from '../chat-media/chat-media-archive.service';
 import { AutomationRulesService } from '../automation/automation-rules.service';
 import type { AiAgentService } from '../ai-agent/ai-agent.service';
+import { LeadResponderInboundService } from '../ai-agents/lead-responder-inbound.service';
+import { registerOptOutIfRefusal } from '../ai-agents/opt-out-detector';
 import type { CadenceService } from '../cadence/cadence.service';
 import { buildIncomingStatus } from '../status-store/incoming-status';
 import type { StatusUpdate } from '../status-store/entities/status-update.entity';
@@ -125,6 +127,22 @@ export class MessageProjector {
       this.messageMutations,
       this.logger,
     );
+  }
+
+  private leadResponderInbound?: LeadResponderInboundService;
+
+  private resolveLeadResponderInbound(): LeadResponderInboundService | undefined {
+    if (!this.leadResponderInbound && this.moduleRef) {
+      try {
+        // Resolved lazily, mirroring resolveAiAgentService: the class is already statically
+        // imported at the top (needed for the static isAgentHandled gate), the ModuleRef lookup
+        // keeps the module dependency out of the Nest graph.
+        this.leadResponderInbound = this.moduleRef.get(LeadResponderInboundService, { strict: false });
+      } catch {
+        return undefined;
+      }
+    }
+    return this.leadResponderInbound;
   }
 
   private resolveAiAgentService(): AiAgentService | undefined {
@@ -380,8 +398,31 @@ export class MessageProjector {
           void cadenceSvc.handleInboundReply(id, chatId).catch(() => undefined);
         }
 
-        // Resposta automática da IA (Sofia)
-        const aiAgentSvc = this.resolveAiAgentService();
+        // LGPD opt-out gate: a refusal in ANY inbound chat (Sofia, cadence or agent pipeline)
+        // registers durably before anything else can react to this message. Reply paths below are
+        // skipped for this message — a lead who asked to stop never gets an automated answer.
+        // Cadence pause still runs above and the WebSocket emit below is unaffected.
+        const inboundText = typeof finalMessage.body === 'string' ? finalMessage.body : '';
+        const refusalRegistered = registerOptOutIfRefusal(id, chatId, inboundText);
+
+        // Lead responder agent (ai-agents module): reacts to replies in chats the pipeline
+        // started (AGENT_AUTO_RESPOND=true). Must run BEFORE Sofia's gate below. Skipped when the
+        // message registered an opt-out: the refusal must not earn an automated goodbye.
+        if (!refusalRegistered && LeadResponderInboundService.isAgentHandled(chatId)) {
+          const bodyText = typeof finalMessage.body === 'string' ? finalMessage.body : '';
+          void this.resolveLeadResponderInbound()
+            ?.handleInbound(id, chatId, bodyText)
+            .catch((err: unknown) => {
+              this.logger.warn(`Lead responder inbound failed: ${err instanceof Error ? err.message : String(err)}`);
+            });
+        }
+
+        // Resposta automática da IA (Sofia) — SKIPPED for chats owned by the responder agent
+        // (ai-agents module): the lead responder reacts to this same message and the two agents
+        // must never double-reply. Static import keeps the dependency one-way. Also skipped when
+        // the message registered an opt-out (LGPD: no automated reply to a refusal).
+        const responderHandled = !refusalRegistered && LeadResponderInboundService.isAgentHandled(chatId);
+        const aiAgentSvc = responderHandled || refusalRegistered ? undefined : this.resolveAiAgentService();
         if (aiAgentSvc) {
           const isAudioType =
             finalMessage.type === 'audio' ||

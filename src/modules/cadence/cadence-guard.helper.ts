@@ -1,4 +1,14 @@
 import * as crypto from 'crypto';
+import {
+  flushGuardStateSync,
+  getPersistedRuntimeState,
+  getGuardLifetimeCounters,
+  loadGuardState,
+  scheduleGuardStateFlush,
+  setGuardRuntimeCounters,
+  setGuardRuntimeState,
+  zeroGuardCountersForTests,
+} from './cadence-guard-persistence';
 
 /**
  * Cadence Guard Helper
@@ -6,6 +16,12 @@ import * as crypto from 'crypto';
  * trava de tempo de 6 minutos (360s), contatos em atendimento manual,
  * telemetria (GuardMetrics), failover de chip, rate limiting, deduplicação de webhooks
  * e lock de concorrência por chip.
+ *
+ * Estado durável: os Maps abaixo são voláteis por natureza (processo). O módulo
+ * cadence-guard-persistence mantém um snapshot atômico em data/guard-state.json para que a
+ * trava de 360s, as janelas de rate limit e os contadores sobrevivam a restarts. Chame
+ * initGuardStatePersistence() no boot (CadenceEngineService.onModuleInit) para hidratar o
+ * estado do último processo; sem isso os guards funcionam igualmente, apenas começam vazios.
  */
 
 export const PROTECTED_MANUAL_PHONES = ['5511981381228', '+5511981381228', '5511930539183', '+5511930539183'];
@@ -56,23 +72,84 @@ const metrics: GuardMetrics = {
   last_sent_timestamps: {},
 };
 
+let persistenceInitialized = false;
+
 /**
- * Retorna uma cópia das métricas atuais dos guards para monitoramento/telemetria.
+ * Hidrata o estado do snapshot persistido (se houver) e passa a espelhar cada mutação para o
+ * snapshot durável. Idempotente. Sem esta chamada os guards operam apenas em memória.
+ */
+export function initGuardStatePersistence(): void {
+  if (persistenceInitialized) return;
+  persistenceInitialized = true;
+
+  loadGuardState();
+  const persisted = getPersistedRuntimeState();
+
+  // Hidratação: o processo anterior é a fonte da verdade até o primeiro dispatch deste.
+  Object.assign(lastSentTimestamps, persisted.lastSentTimestamps);
+  for (const [sessionId, window] of Object.entries(persisted.chipDispatchWindows)) {
+    chipDispatchWindows[sessionId] = window;
+  }
+  Object.assign(webhookFingerprints, persisted.webhookFingerprints);
+  Object.assign(chipLocks, persisted.chipLocks);
+
+  persistGuardState();
+}
+
+/** Espelha o estado vivo (Maps + counters) para a persistência e agenda o flush atômico. */
+function persistGuardState(): void {
+  setGuardRuntimeState({
+    lastSentTimestamps: { ...lastSentTimestamps },
+    chipDispatchWindows: Object.fromEntries(
+      Object.entries(chipDispatchWindows).map(([sessionId, window]) => [sessionId, [...window]]),
+    ),
+    webhookFingerprints: { ...webhookFingerprints },
+    chipLocks: Object.fromEntries(Object.entries(chipLocks).map(([sessionId, lock]) => [sessionId, { ...lock }])),
+  });
+  setGuardRuntimeCounters({
+    protected_contacts_blocked: metrics.protected_contacts_blocked,
+    chip_interval_rejections: metrics.chip_interval_rejections,
+    rate_limit_rejections: metrics.rate_limit_rejections,
+    duplicate_webhooks_ignored: metrics.duplicate_webhooks_ignored,
+    concurrency_lock_conflicts: metrics.concurrency_lock_conflicts,
+    dispatches_recorded: metrics.dispatches_recorded,
+    chip_failover_count: metrics.chip_failover_count,
+  });
+  scheduleGuardStateFlush();
+}
+
+/** Flush imediato do snapshot (boot/shutdown); chamado pelo CadenceEngineService.onModuleDestroy. */
+export function flushGuardStateNow(): void {
+  persistGuardState();
+  flushGuardStateSync();
+}
+
+/**
+ * Retorna as métricas atuais dos guards para monitoramento/telemetria. Os contadores são os
+ * totais de vida (baseline do snapshot + delta do processo), monotônicos entre restarts.
  */
 export function getGuardMetrics(): GuardMetrics {
+  const lifetime = getGuardLifetimeCounters();
   const timestampsFormatted: Record<string, string> = {};
   Object.entries(lastSentTimestamps).forEach(([sessionId, timestampMs]) => {
     timestampsFormatted[sessionId] = new Date(timestampMs).toISOString();
   });
 
   return {
-    ...metrics,
+    protected_contacts_blocked: lifetime.protected_contacts_blocked,
+    chip_interval_rejections: lifetime.chip_interval_rejections,
+    rate_limit_rejections: lifetime.rate_limit_rejections,
+    duplicate_webhooks_ignored: lifetime.duplicate_webhooks_ignored,
+    concurrency_lock_conflicts: lifetime.concurrency_lock_conflicts,
+    dispatches_recorded: lifetime.dispatches_recorded,
+    chip_failover_count: lifetime.chip_failover_count,
     last_sent_timestamps: timestampsFormatted,
   };
 }
 
 /**
- * Reinicia as métricas e histórico em memória (para testes unitários/E2E).
+ * Reinicia as métricas e histórico em memória (para testes unitários/E2E). Zera também o baseline
+ * vindo do snapshot para que as assertions de contadores sejam determinísticas.
  */
 export function resetGuardMetrics(): void {
   metrics.protected_contacts_blocked = 0;
@@ -88,6 +165,25 @@ export function resetGuardMetrics(): void {
   Object.keys(chipDispatchWindows).forEach(key => delete chipDispatchWindows[key]);
   Object.keys(webhookFingerprints).forEach(key => delete webhookFingerprints[key]);
   Object.keys(chipLocks).forEach(key => delete chipLocks[key]);
+
+  // Zera baseline + runtime em memória SEM regravar o snapshot: resetar as assertions de um teste
+  // não pode destruir o snapshot em disco (usado pelo boot de produção e por testes de restart).
+  zeroGuardCountersForTests();
+
+  // Permite que um teste subsequente simule um boot real via initGuardStatePersistence().
+  persistenceInitialized = false;
+}
+
+/**
+ * Snapshot do último envio por chip (sessionId -> ms epoch), para o renderer de métricas.
+ */
+export function getChipLastSentSnapshot(): Record<string, number> {
+  return { ...lastSentTimestamps };
+}
+
+/** Snapshot das janelas de rate limit por chip, para o renderer de métricas. */
+export function getChipDispatchWindowsSnapshot(): Record<string, number[]> {
+  return Object.fromEntries(Object.entries(chipDispatchWindows).map(([sessionId, w]) => [sessionId, [...w]]));
 }
 
 /**
@@ -103,13 +199,20 @@ export function isProtectedContact(phone: string): boolean {
 
   if (isProtected) {
     metrics.protected_contacts_blocked++;
+    persistGuardState();
   }
 
   return isProtected;
 }
 
 /**
- * Resolve o chip correto com base no nicho/categoria do lead e status de sessões ativas (failover).
+ * Resolve o chip correto com base no nicho/categoria do lead.
+ *
+ * Exclusividade por nicho (AGENTS.md regra 3): o chip do nicho é o ÚNICO caminho de envio —
+ * joalheria/ouro sai sempre pelo chip-2-iphone (TOR) e agro/sementes sempre pelo suportew.
+ * NÃO existe failover cross-niche: se o chip do nicho não estiver entre as sessões ativas, o
+ * resultado vem com isAvailable=false (fail closed). Enviar pelo chip do outro nicho quebraria
+ * a separação de IP/rede e o gate de mensagem de cada operação.
  */
 export function resolveChipForNiche(
   nicheOrCategory: string = '',
@@ -125,33 +228,17 @@ export function resolveChipForNiche(
   const isOuro = CHIP_CONFIGS.CHIP_2_OURO.niches.some(keyword => normalized.includes(keyword));
 
   const primaryConfig = isOuro ? CHIP_CONFIGS.CHIP_2_OURO : CHIP_CONFIGS.CHIP_1_AGRO;
-  const fallbackConfig = isOuro ? CHIP_CONFIGS.CHIP_1_AGRO : CHIP_CONFIGS.CHIP_2_OURO;
 
-  if (activeSessionIds && Array.isArray(activeSessionIds)) {
-    const isPrimaryActive = activeSessionIds.includes(primaryConfig.sessionId);
-
-    if (!isPrimaryActive) {
-      const isFallbackActive = activeSessionIds.includes(fallbackConfig.sessionId);
-
-      if (isFallbackActive) {
-        metrics.chip_failover_count++;
-        return {
-          sessionId: fallbackConfig.sessionId,
-          chipName: `${fallbackConfig.name} (Failover)`,
-          useProxy: fallbackConfig.useProxy,
-          isFailover: true,
-          isAvailable: true,
-        };
-      }
-
-      return {
-        sessionId: primaryConfig.sessionId,
-        chipName: primaryConfig.name,
-        useProxy: primaryConfig.useProxy,
-        isFailover: false,
-        isAvailable: false,
-      };
-    }
+  if (activeSessionIds && Array.isArray(activeSessionIds) && !activeSessionIds.includes(primaryConfig.sessionId)) {
+    // Chip do nicho offline: falha fechada. isFailover permanece no tipo por compatibilidade,
+    // mas é sempre false — o contador chip_failover_count fica em 0 por construção.
+    return {
+      sessionId: primaryConfig.sessionId,
+      chipName: primaryConfig.name,
+      useProxy: primaryConfig.useProxy,
+      isFailover: false,
+      isAvailable: false,
+    };
   }
 
   return {
@@ -165,6 +252,7 @@ export function resolveChipForNiche(
 
 /**
  * Valida se o intervalo mínimo entre envios (360s) foi respeitado para um determinado chip.
+ * O timestamp do último envio sobrevive a restarts via snapshot persistido.
  */
 export function validateChipInterval(
   sessionId: string,
@@ -178,6 +266,7 @@ export function validateChipInterval(
   if (lastSentMs > 0 && elapsedMs < minMs) {
     const remainingSeconds = Math.ceil((minMs - elapsedMs) / 1000);
     metrics.chip_interval_rejections++;
+    persistGuardState();
     return { valid: false, remainingSeconds };
   }
 
@@ -203,6 +292,7 @@ export function validateChipRateLimit(
   const currentCount = chipDispatchWindows[sessionId].length;
   if (currentCount >= maxPerMinute) {
     metrics.rate_limit_rejections++;
+    persistGuardState();
     return { allowed: false, currentCount };
   }
 
@@ -232,15 +322,19 @@ export function isDuplicateWebhook(
 
   if (webhookFingerprints[fingerprint]) {
     metrics.duplicate_webhooks_ignored++;
+    persistGuardState();
     return true;
   }
 
   webhookFingerprints[fingerprint] = nowTimestampMs;
+  persistGuardState();
   return false;
 }
 
 /**
  * Adquire lock de concorrência distribuído por chip (para serialização entre workers).
+ * Persistido para que um worker que suba após um crash não herde um lock eterno — a expiração
+ * (TTL) é verificada contra o relógio, não contra a vida do processo.
  */
 export function acquireChipLock(
   sessionId: string,
@@ -251,6 +345,7 @@ export function acquireChipLock(
 
   if (currentLock && currentLock.expiresAt > nowTimestampMs) {
     metrics.concurrency_lock_conflicts++;
+    persistGuardState();
     return null; // Bloqueado por outro processo/worker
   }
 
@@ -259,6 +354,7 @@ export function acquireChipLock(
     lockId,
     expiresAt: nowTimestampMs + ttlMs,
   };
+  persistGuardState();
 
   return lockId;
 }
@@ -270,6 +366,7 @@ export function releaseChipLock(sessionId: string, lockId: string): boolean {
   const currentLock = chipLocks[sessionId];
   if (currentLock && currentLock.lockId === lockId) {
     delete chipLocks[sessionId];
+    persistGuardState();
     return true;
   }
   return false;
@@ -277,6 +374,7 @@ export function releaseChipLock(sessionId: string, lockId: string): boolean {
 
 /**
  * Registra o timestamp do envio efetuado no chip e incrementa a janela de rate limit.
+ * É este registro que mantém a trava de 360s após um restart do processo.
  */
 export function recordChipSentTimestamp(sessionId: string, timestampMs: number = Date.now()): void {
   lastSentTimestamps[sessionId] = timestampMs;
@@ -285,6 +383,7 @@ export function recordChipSentTimestamp(sessionId: string, timestampMs: number =
   }
   chipDispatchWindows[sessionId].push(timestampMs);
   metrics.dispatches_recorded++;
+  persistGuardState();
 }
 
 /**

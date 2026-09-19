@@ -36,7 +36,7 @@ describe('Cadence Routing & Security Guards E2E', () => {
     });
   });
 
-  describe('resolveChipForNiche & Failover', () => {
+  describe('resolveChipForNiche & Exclusividade por nicho', () => {
     it('deve rotear nichos de Joalheria, Ouro e Semijoias para o chip-2-iphone (Proxy TOR)', () => {
       const resultOuro = resolveChipForNiche('Joalheria & Ouro 18k');
       expect(resultOuro.sessionId).toBe(CHIP_CONFIGS.CHIP_2_OURO.sessionId);
@@ -57,16 +57,22 @@ describe('Cadence Routing & Security Guards E2E', () => {
       expect(resultSementes.sessionId).toBe(CHIP_CONFIGS.CHIP_1_AGRO.sessionId);
     });
 
-    it('deve realizar failover para o chip secundário se o primário estiver offline', () => {
+    it('NÃO deve fazer failover cross-niche: chip do nicho offline => fail closed (regra 3 do AGENTS.md)', () => {
       const activeSessions = [CHIP_CONFIGS.CHIP_1_AGRO.sessionId];
 
-      const resultFailover = resolveChipForNiche('Joalheria Ouro', activeSessions);
-      expect(resultFailover.sessionId).toBe(CHIP_CONFIGS.CHIP_1_AGRO.sessionId);
-      expect(resultFailover.isFailover).toBe(true);
-      expect(resultFailover.isAvailable).toBe(true);
+      // Lead de OURO com apenas o chip agro online: nunca pode sair pelo chip do outro nicho.
+      const resultBlocked = resolveChipForNiche('Joalheria Ouro', activeSessions);
+      expect(resultBlocked.sessionId).toBe(CHIP_CONFIGS.CHIP_2_OURO.sessionId);
+      expect(resultBlocked.isAvailable).toBe(false);
+      expect(resultBlocked.isFailover).toBe(false);
+
+      // O mesmo vale no sentido inverso (agro com apenas o chip ouro online).
+      const resultBlockedAgro = resolveChipForNiche('Irrigação Agro', [CHIP_CONFIGS.CHIP_2_OURO.sessionId]);
+      expect(resultBlockedAgro.sessionId).toBe(CHIP_CONFIGS.CHIP_1_AGRO.sessionId);
+      expect(resultBlockedAgro.isAvailable).toBe(false);
 
       const metrics = getGuardMetrics();
-      expect(metrics.chip_failover_count).toBe(1);
+      expect(metrics.chip_failover_count).toBe(0);
     });
 
     it('deve sinalizar indisponibilidade se NENHUM chip estiver online', () => {

@@ -8,12 +8,17 @@ import { LeadCadenceProgress } from './entities/lead-cadence-progress.entity';
 import { MessageService } from '../message/message.service';
 import { createLogger } from '../../common/services/logger.service';
 import { SupabaseSyncService } from './supabase-sync.service';
+import { SessionRestrictionStore } from '../session/session-restriction-store.service';
+import { AiFeedbackLoopService } from '../ai-agent/ai-feedback-loop.service';
 import {
   isProtectedContact,
   resolveChipForNiche,
   validateChipInterval,
   recordChipSentTimestamp,
+  initGuardStatePersistence,
+  flushGuardStateNow,
 } from './cadence-guard.helper';
+import { restrictionBlocksDispatch, restrictionResumeAt, rescheduleForRestriction } from './restriction-resume';
 
 function parseSpintax(text: string): string {
   const spintaxRegex = /\{([^{}]+)\}/g;
@@ -57,7 +62,21 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
     private readonly leadProgressRepository: Repository<LeadCadenceProgress>,
     private readonly supabaseSync: SupabaseSyncService,
     @Optional() private readonly moduleRef?: ModuleRef,
+    @Optional() private readonly sessionRestrictions?: SessionRestrictionStore,
   ) {}
+
+  /** Lazily resolved feedback loop (records lead replies against sent engagements). */
+  private getFeedbackLoop(): AiFeedbackLoopService | undefined {
+    if (!this.feedbackLoopInstance && this.moduleRef) {
+      try {
+        this.feedbackLoopInstance = this.moduleRef.get(AiFeedbackLoopService, { strict: false });
+      } catch {
+        return undefined;
+      }
+    }
+    return this.feedbackLoopInstance;
+  }
+  private feedbackLoopInstance?: AiFeedbackLoopService;
 
   private getMessageService(): MessageService | undefined {
     if (!this.messageService && this.moduleRef) {
@@ -68,6 +87,9 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.logger.log('Starting Cadence Engine (10-Touch Follow-up Processor)...');
+    // Hydrate guard state (360s interval, rate windows, counters) from the durable snapshot so a
+    // restart cannot reset the chip interval mid-day.
+    initGuardStatePersistence();
     // Run ticker every 15 seconds
     this.intervalId = setInterval(() => {
       this.processDueCadenceSteps().catch((err: unknown) => {
@@ -82,6 +104,8 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
     if (this.intervalId) {
       clearInterval(this.intervalId);
     }
+    // Persist the final guard-state snapshot before shutdown.
+    flushGuardStateNow();
   }
 
   /**
@@ -106,6 +130,26 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
     });
 
     for (const lead of activeLeads) {
+      // Close the learning loop: attach this reply to the last tracked agent-sent engagement so
+      // the message agent learns which opening styles get answers. Fire-and-forget with logging.
+      const feedbackLoop = this.getFeedbackLoop();
+      if (feedbackLoop) {
+        void feedbackLoop
+          .recordLeadReply(cleanPhone, 'replied')
+          .then(updated => {
+            if (updated) {
+              this.logger.log(
+                `[Feedback Loop] Resposta de ${cleanPhone} vinculada ao estilo '${updated.openingStyle}' (${updated.replyLatencyMinutes ?? '?'} min)`,
+              );
+            }
+          })
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `Feedback loop reply recording failed for ${cleanPhone}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      }
+
       if (lead.cadence && lead.cadence.stopOnReply) {
         lead.status = 'replied_paused';
         lead.lastReplyAt = new Date();
@@ -121,6 +165,19 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`[StopOnReply] Lead ${lead.phone} replied! Paused 10-touch cadence ${lead.cadenceId}`);
       }
     }
+  }
+
+  /**
+   * Session ids this process currently owns and serves (READY) — the failover candidate list.
+   * Used both for niche routing and for the restriction-aware chip choice.
+   */
+  /**
+   * Sessões ativas para a checagem de disponibilidade do chip do nicho. `undefined` assume
+   * disponível (a camada de sessão valida na hora do envio). Sem failover cross-niche: um chip
+   * offline NÃO delega o lead ao chip do outro nicho (regra 3 do AGENTS.md) — o lead reagenda.
+   */
+  private activeSessionIds(): string[] | undefined {
+    return undefined;
   }
 
   private isWithinWorkingHours(cadence: Cadence): boolean {
@@ -164,9 +221,37 @@ export class CadenceEngineService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
-        // Roteamento inteligente de chip por nicho
-        const targetChip = resolveChipForNiche(String(lead.variables?.nicho || lead.cadence?.name || ''));
+        // Roteamento de chip por nicho — chip do nicho é EXCLUSIVO (sem failover cross-niche)
+        const targetChip = resolveChipForNiche(
+          String(lead.variables?.nicho || lead.cadence?.name || ''),
+          this.activeSessionIds(),
+        );
         const targetSessionId = lead.sessionId || targetChip.sessionId;
+
+        // Guard: chip do nicho indisponível — falha fechada. Reagenda em vez de enviar pelo chip
+        // do outro nicho, o que quebraria a separação de IP/rede e o gate de mensagem.
+        if (!lead.sessionId && !targetChip.isAvailable) {
+          this.logger.warn(
+            `[Guard Chip Offline] Chip do nicho indisponível (${targetChip.chipName}). Lead ${lead.phone} reagendado em 10 min — sem failover cross-niche.`,
+          );
+          lead.nextRunAt = new Date(Date.now() + 10 * 60 * 1000);
+          await this.leadProgressRepository.save(lead);
+          continue;
+        }
+
+        // Guard: conta sob reachout_timelock (suspensão de 24h) — reagenda para depois do fim do
+        // timelock em vez de tentar o envio (que falharia) ou marcar erro no lead.
+        const restriction = this.sessionRestrictions?.get(targetSessionId);
+        if (restrictionBlocksDispatch(restriction)) {
+          const resumeAt = restrictionResumeAt(restriction);
+          const nextRun = rescheduleForRestriction(now.getTime(), resumeAt ?? now.getTime() + 24 * 3600_000);
+          this.logger.warn(
+            `[Guard Restriction] Chip ${targetSessionId} sob reachout_timelock até ${new Date(nextRun).toISOString()}. Lead ${lead.phone} reagendado.`,
+          );
+          lead.nextRunAt = nextRun;
+          await this.leadProgressRepository.save(lead);
+          continue;
+        }
 
         // Guard: Trava de intervalo de 6 minutos (360s) por chip
         const intervalCheck = validateChipInterval(targetSessionId, 360);
