@@ -14,7 +14,7 @@ graph TD
     C -->|Sim| D[🤖 Sofia assume a conversa]
     D -->|Fase de Descoberta| E[Agendamento / Proposta]
     
-    C -->|Não respondeu 24h| F(Toque 2: Follow-up / Lembrete)
+    C -->|Não respondeu 24h| F(Toque 2: Follow-up com valor novo)
     F -->|Script Toque 2| G{O Lead Respondeu?}
     
     G -->|Sim| D
@@ -46,18 +46,27 @@ Cada contato possui dois campos fundamentais no Supabase para gerenciar a cadên
 ### 3️⃣ Toque 2 (Follow-up de 24h)
 - **Status no Banco:** `contacted`
 - **Step no Banco:** `2`
-- **Ação:** O script `send-followup-toque2.js` filtra quem está no Step 1 e manda o lembrete (ex: *"Conseguiu ver a mensagem anterior?"*).
-- **Espera:** Aguardamos mais 24 a 48 horas. Se o lead seguir ignorando, ele vai para o Toque final.
+- **Ação:** O script `send-followup-toque2.js` filtra quem está no Step 1 e envia um follow-up **com valor novo** (ex: *"Essa semana abriu uma vaga na agenda pra montar páginas e catálogos online pra empresas da região e lembrei de vocês. Faz sentido te mostrar um exemplo do resultado?"*).
+- **PROIBIDO cobrar resposta:** frases como *"Conseguiu ver a mensagem anterior?"* ou *"Tô aguardando seu retorno"* violam a Regra 5 do treinamento (ver `PROMPT_TREINAMENTO_SDR_AGENTE.md`). Todo follow-up traz informação nova, novidade ou prova social REAL, e termina com UMA pergunta (Regra 7).
+- **Espera:** Aguardamos mais 24 a 48 horas. Se o lead seguir sem responder, ele vai para o Toque final.
 
 ### 4️⃣ Toque 3 (Break-up)
 - **Status no Banco:** `lost` (Se não responder) ou `contacted` com `Step: 3`.
-- **Ação:** O script `send-followup-toque3.js` manda a última cartada (*"Se não for o momento, não te incomodo mais"*). Se ele responder a isso, a Sofia tenta reverter. Se não responder, a cadência é oficialmente encerrada para não levar ban no WhatsApp.
+- **Ação:** O script `send-followup-toque3.js` manda a última cartada com escolha para o lead (*"Se não for o momento de criar o site ou catálogo de vocês agora, sem problema. Posso te chamar numa próxima oportunidade ou prefere que eu não te incomode mais?"*). Se ele responder a isso, a Sofia tenta reverter. Se não responder, a cadência é oficialmente encerrada para não levar ban no WhatsApp.
 
 ---
 
 ## 🤖 Intervenção da Sofia (IA)
 
 O pulo do gato é: **Assim que o lead manda QUALQUER mensagem de volta, a cadência fria é imediatamente CANCELADA para ele.**
+
+---
+
+## 🛡️ Regras de Disparo (obrigatórias em TODOS os toques)
+
+- **Intervalo mínimo de 6 minutos entre envios no mesmo chip** (AGENTS.md, regra 2). Os scripts `send-followup-toque2.js` e `send-followup-toque3.js` já aplicam 6 min + jitter de até 1 min.
+- **Leads sob atendimento manual NUNCA recebem disparo automático** (AGENTS.md, regra 4): `+55 11 98138-1228` e `+55 11 93053-9183` estão na lista `PROTECTED_PHONES` dos scripts.
+- **Mensagens seguem o treinamento SDR** (`PROMPT_TREINAMENTO_SDR_AGENTE.md`): nome do lead, valor novo em cada follow-up, proibido cobrar resposta (Regra 5), sempre terminar com pergunta (Regra 7).
 
 - A Sofia (nosso agente IA configurado no `ai-agent.service.ts`) entra em ação.
 - O campo `status` do lead no banco de dados muda automaticamente para `replied`.

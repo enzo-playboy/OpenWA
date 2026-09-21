@@ -4,6 +4,7 @@ import { LlmProviderChainService, ChatMessage } from '../ai-agent/llm-provider-c
 import { recordAgentDecision } from './agents-metrics';
 import { OptOutRegistry } from './safety-guardrails.agent';
 import { looksLikeRefusal } from './opt-out-detector';
+import { containsCollection, endsWithQuestion } from './content-rules';
 
 /**
  * Lead Responder Agent — the conversation half of the pipeline.
@@ -19,6 +20,11 @@ import { looksLikeRefusal } from './opt-out-detector';
  *
  * It NEVER runs when a human has taken over the chat (see PausedChatsBridge) and it registers the
  * chat as human-handled for Sofia (the legacy auto-responder) so the two agents never double-reply.
+ *
+ * SDR training rules enforced here (see content-rules.ts / PROMPT_TREINAMENTO_SDR_AGENTE.md): a
+ * reply never contains collection/pressure phrasing (Regra 5) and never ends in silence — the
+ * final question is appended deterministically when the model forgot (Regra 7). Audio is never
+ * proposed without the permission question, and call invitations always schedule a time first.
  */
 
 export type LeadIntent = 'interested' | 'question' | 'busy' | 'refuse' | 'handoff' | 'unsure';
@@ -65,6 +71,14 @@ REGRAS OBRIGATÓRIAS:
 - Se a pessoa demonstrou dúvida, ajude com clareza usando apenas as informações fornecidas.
 - Se pediram para parar, responda com educação e confirme que não vai mais receber contato (1 frase).
 - Se não souber algo, diga que vai confirmar com o time e retorna. NÃO invente.
+
+TREINAMENTO SDR (obrigatório):
+- Use o primeiro nome do lead quando ele estiver no contexto. NUNCA invente nome.
+- Português correto, SEM abreviações informais (nada de "vc", "blz", "obg"). Frases curtas, sem prolixidade.
+- NUNCA envie áudio nem diga que vai mandar áudio sem antes pedir autorização. Se o áudio ajudar a explicar uma dúvida, a resposta deve ser APENAS o pedido de permissão: "{nome}, acredito que por áudio vou conseguir te explicar com muito mais clareza. Posso te enviar um áudio? Você tem disponibilidade para ouvir?". Se o lead preferir escrito, respeite e fique no texto.
+- Se a dúvida for complexa ou o lead demonstrar interesse em avançar, proponha uma LIGAÇÃO com horário combinado (nunca ligue sem avisar): "{nome}, acredito que é melhor ainda a gente conversar por uma ligação. Quando você tem disponibilidade?".
+- PROIBIDO cobrar resposta ("tô aguardando", "vai me responder?", "por que sumiu").
+- Termine SEMPRE com UMA pergunta que conduza a conversa. NUNCA termine em silêncio.
 
 Responda APENAS com o texto da mensagem.`;
 
@@ -123,13 +137,14 @@ export class LeadResponderAgent {
       ];
       const { reply, providerUsed } = await this.llm.executeWithFallback(messages, 'agents-responder');
       const clean = this.sanitize(reply);
-      if (clean.length >= 5) {
+      if (clean.length >= 5 && !containsCollection(clean)) {
         const intent = this.classifyIntent(text);
-        this.recordTurn(phone, 'agent', clean);
+        const finalText = this.ensureFinalQuestion(clean, intent);
+        this.recordTurn(phone, 'agent', finalText);
         recordAgentDecision('responder', 'dispatch', 'llm');
         return {
           intent,
-          reply: clean,
+          reply: finalText,
           action: intent === 'busy' ? 'wait' : 'reply',
           confidence: 0.8,
           source: 'llm',
@@ -216,5 +231,18 @@ export class LeadResponderAgent {
       .replace(/https?:\/\/\S+/g, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+  }
+
+  /**
+   * Training rule 7 (Regra de Ouro): a conversational reply must not end in silence. The LLM is
+   * instructed to close with a question; this is the deterministic backstop that appends the
+   * neutral conducting question when the model forgot. Opt-out goodbyes are exempt (they must
+   * NOT invite more conversation) and the 'busy' intent keeps the ack (a follow-up offer is
+   * already part of the intent semantics).
+   */
+  private ensureFinalQuestion(text: string, intent?: LeadIntent): string {
+    if (intent === 'refuse' || intent === 'busy') return text;
+    if (endsWithQuestion(text)) return text;
+    return `${text}\n\nFicou alguma dúvida?`;
   }
 }

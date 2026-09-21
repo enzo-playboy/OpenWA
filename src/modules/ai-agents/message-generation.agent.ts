@@ -10,6 +10,7 @@ import {
   OpeningStylePerformanceSummary,
   QualificationResult,
 } from './agents.types';
+import { containsCollection, endsWithQuestion } from './content-rules';
 
 /**
  * Message Generation Agent.
@@ -24,8 +25,10 @@ import {
  * not merely what has been sent. Every dispatched message is later tracked (trackSentMessage) and
  * every lead reply closes the loop (recordLeadReply), so the insight improves with volume.
  *
- * Hard content rules enforced regardless of source: no markdown/asterisks, no bullet lists, no
- * links, max ~600 chars (2-3 short paragraphs).
+ * Hard content rules enforced regardless of source (see content-rules.ts / training doc): no
+ * markdown/asterisks, no bullet lists, no links, max ~600 chars (2-3 short paragraphs), the
+ * message MUST end with a question (Regra 7) and MUST NOT contain collection/pressure phrasing
+ * (Regra 5). A first-touch message is always written text — the agent never proposes audio.
  */
 
 const MAX_MESSAGE_LENGTH = 600;
@@ -43,7 +46,29 @@ REGRAS OBRIGATÓRIAS:
 - NÃO invente fatos sobre a empresa. Use apenas as informações fornecidas.
 - NÃO prometa desconto, preço ou prazo. NÃO pareça script de robô.
 
+TREINAMENTO SDR (obrigatório):
+- Primeira abordagem é SEMPRE por escrito: NUNCA áudio, NUNCA sugerir enviar áudio no primeiro contato.
+- Use o primeiro nome do lead em todas as interações. Se o nome não existir, NÃO invente um.
+- Personalize com o contexto real do lead (empresa, nicho, notas, toques anteriores). PROIBIDO copiar e colar genérico.
+- Frases curtas e objetivas. Corte palavras que só encham linguiça. Português correto, SEM abreviações informais (nada de "vc", "blz", "obg").
+- PROIBIDO mensagem de cobrança ("tô aguardando sua resposta", "vai me responder?", "por que sumiu").
+- A mensagem DEVE terminar com UMA pergunta que convide à resposta e conduza a conversa. NUNCA termine em silêncio.
+
 Responda APENAS com o texto da mensagem, sem aspas, sem comentários.`;
+
+/**
+ * Follow-up addendum (training rule 5): a re-approach must carry NEW value — fresh context,
+ * useful information or social proof — never a demand for a reply. The last touch text is
+ * included so the LLM avoids repeating the angle already used.
+ */
+const FOLLOWUP_PROMPT_ADDENDUM = `
+
+CONTEXTO: Este NÃO é o primeiro contato — o lead já recebeu toques anteriores e está sem responder.
+REGRAS DE FOLLOW-UP (obrigatórias):
+- Cada follow-up traz um NOVO contexto: informação útil, novidade relevante ou depoimento REAL de outro cliente (prova social). Use apenas depoimentos presentes no contexto fornecido. NUNCA invente feedback.
+- PROIBIDO cobrar resposta em qualquer forma ("conseguiu ver?", "tô aguardando", "vai me responder?").
+- Não repita o ângulo do último toque (texto abaixo). Traga algo novo.
+- Continue terminando com UMA pergunta leve.`;
 
 /**
  * Template variants keyed by the opening style they open with. The style pick comes from the
@@ -59,7 +84,7 @@ const STYLE_TEMPLATES: Record<OpeningStylePerformanceSummary['style'], (lead: Ag
     `A gente ajuda negócios assim a ${lead.niche === 'ouro' ? 'vender ouro com cotação justa e processo simples' : 'economizar água e ganhar produtividade no planejamento de irrigação'}. Faz sentido conversar?`,
   statement: lead =>
     `Oi${lead.name ? ` ${lead.name.split(' ')[0]}` : ''}! tudo bem? Somos especialistas em ${lead.niche === 'ouro' ? 'compra e venda de ouro com cotação diária' : 'irrigação e nutrição vegetal para lavoura'}.\n\n` +
-    `Se algum dia fizer sentido pra ${lead.company || 'você'}, é só chamar. Qualquer coisa me avisa!`,
+    `Se algum dia fizer sentido pra ${lead.company || 'você'}, é só chamar por aqui. Combinado?`,
   direct_offer: lead =>
     `Oi${lead.name ? ` ${lead.name.split(' ')[0]}` : ''}! tudo bem? Trabalho com ${lead.niche === 'ouro' ? 'liquidação de ouro com pagamento rápido' : 'projetos de irrigação com diagnóstico gratuito'} e atendo ${lead.company || 'vários negócios da região'}.\n\n` +
     `Quer que eu te passe como funciona, sem compromisso?`,
@@ -89,10 +114,14 @@ export class MessageGenerationAgent {
 
   async generate(lead: AgentLeadInput, qualification: QualificationResult): Promise<GeneratedMessage> {
     const insight = await this.readStyleInsight();
+    const isFollowUp = (lead.previousTouches?.length ?? 0) > 0;
 
     try {
       const messages: ChatMessage[] = [
-        { role: 'system', content: SYSTEM_PROMPT + this.styleGuidance(insight) },
+        {
+          role: 'system',
+          content: SYSTEM_PROMPT + (isFollowUp ? FOLLOWUP_PROMPT_ADDENDUM : '') + this.styleGuidance(insight),
+        },
         { role: 'user', content: JSON.stringify(this.messageContext(lead, qualification)) },
       ];
       const { reply, providerUsed } = await this.llm.executeWithFallback(messages, 'agents-message');
@@ -107,7 +136,9 @@ export class MessageGenerationAgent {
           styleInsight: insight,
         };
       }
-      this.logger.warn(`Message LLM (${providerUsed}) output rejected by content rules; using template.`);
+      this.logger.warn(
+        `Message LLM (${providerUsed}) output rejected by content rules${this.ruleSummary(text)}; using template.`,
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Message LLM chain failed; using template: ${msg}`);
@@ -115,9 +146,34 @@ export class MessageGenerationAgent {
     return this.template(lead, insight);
   }
 
-  /** Deterministic fallback, style chosen by what has actually been answered. */
-  template(lead: AgentLeadInput, insight?: OpeningStyleInsight): GeneratedMessage {
-    const style = this.pickStyle(insight);
+  /**
+   * Post-generation gate for the SDR training rules (Regra de Ouro + banimento de cobrança).
+   * Returns true when the text may be proposed/sent as-is; otherwise explains which rule failed
+   * (used in the warn log so operators see WHY an LLM output was discarded for the template).
+   */
+  acceptable(text: string): boolean {
+    if (!text || text.length < 40 || text.length > MAX_MESSAGE_LENGTH) return false;
+    if (containsCollection(text)) return false; // Regra 5: proibido cobrar resposta
+    return endsWithQuestion(text); // Regra 7: sempre terminar com pergunta
+  }
+
+  /** Human-readable summary of which training rule failed, for the rejection log line. */
+  private ruleSummary(text: string): string {
+    if (containsCollection(text)) return ' (cobrança detectada — Regra 5)';
+    if (!endsWithQuestion(text)) return ' (sem pergunta final — Regra 7)';
+    return '';
+  }
+
+  /**
+   * Deterministic fallback, style chosen by what has actually been answered. `forcedStyle` is for
+   * tests (assert a specific variant); production callers omit it.
+   */
+  template(
+    lead: AgentLeadInput,
+    insight?: OpeningStyleInsight,
+    forcedStyle?: OpeningStylePerformanceSummary['style'],
+  ): GeneratedMessage {
+    const style = forcedStyle ?? this.pickStyle(insight);
     const factory = STYLE_TEMPLATES[style] ?? STYLE_TEMPLATES.question;
     return {
       text: factory(lead),
@@ -203,10 +259,6 @@ export class MessageGenerationAgent {
       return 'direct_offer';
     }
     return 'statement';
-  }
-
-  private acceptable(text: string): boolean {
-    return text.length >= 40 && text.length <= MAX_MESSAGE_LENGTH;
   }
 
   private messageContext(lead: AgentLeadInput, qualification: QualificationResult): Record<string, unknown> {

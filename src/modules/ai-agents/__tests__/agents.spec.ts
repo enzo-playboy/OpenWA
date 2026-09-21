@@ -172,6 +172,60 @@ describe('MessageGenerationAgent', () => {
     expect(result.text).not.toMatch(/\*\*|https?:\/\//);
   });
 
+  it('every template fallback ends with a question (Regra de Ouro)', () => {
+    const agent = makeAgent();
+    for (const style of ['question', 'context', 'statement', 'direct_offer'] as const) {
+      const result = agent.template(baseLead, undefined, style);
+      expect(result.text.trimEnd().endsWith('?')).toBe(true);
+      expect(result.openingStyle).toBe(style);
+    }
+  });
+
+  it('rejects LLM output that ends in silence (Regra 7) and falls back to template', async () => {
+    const llm = {
+      executeWithFallback: jest.fn().mockResolvedValue({
+        reply:
+          'Oi Maria! tudo bem? Vi que a Joalheria Teste trabalha com compra de ouro e hoje vende bastante semijoia.',
+        providerUsed: 'groq',
+      }),
+    };
+    const result = await makeAgent(llm).generate(baseLead, qualification);
+    expect(result.source).toBe('template');
+    expect(result.text.trimEnd().endsWith('?')).toBe(true);
+  });
+
+  it('rejects LLM output with collection phrasing (Regra 5) and falls back to template', async () => {
+    const llm = {
+      executeWithFallback: jest.fn().mockResolvedValue({
+        reply: 'Oi Maria! Tô aguardando sua resposta sobre a Joalheria Teste. Você vai me responder hoje?',
+        providerUsed: 'groq',
+      }),
+    };
+    const result = await makeAgent(llm).generate(baseLead, qualification);
+    expect(result.source).toBe('template');
+  });
+
+  it('follow-up prompt carries the no-collection rule and last-touch context', async () => {
+    const llm = {
+      executeWithFallback: jest.fn().mockResolvedValue({
+        reply:
+          'Oi Maria! Passamos por aqui semana passada e agora tem novidade na compra de ouro. Faz sentido te contar?',
+        providerUsed: 'groq',
+      }),
+    };
+    const leadWithTouches: AgentLeadInput = {
+      ...baseLead,
+      previousTouches: ['Toque 1 enviado pela régua de cadência'],
+    };
+    await makeAgent(llm).generate(leadWithTouches, qualification);
+    const firstCall = (llm.executeWithFallback.mock.calls as unknown as Array<[unknown[]]>)[0];
+    const systemPrompt = (firstCall[0][0] as { content: string }).content;
+    const userContext = (firstCall[0][1] as { content: string }).content;
+    expect(systemPrompt).toContain('NÃO é o primeiro contato');
+    expect(systemPrompt).toContain('PROIBIDO cobrar resposta');
+    expect(userContext).toContain('Toque 1 enviado pela régua de cadência');
+  });
+
   it('sanitize strips markdown, lists and links', () => {
     const agent = makeAgent();
     const cleaned = agent.sanitize('**Olá** Maria!\n- item 1\n- item 2\nVeja https://x.com/pronto');

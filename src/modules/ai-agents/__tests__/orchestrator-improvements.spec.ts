@@ -26,7 +26,8 @@ const makeLlm = (reply: string): LlmProviderChainService =>
 
 const QUALIFICATION_JSON =
   '{"score": 85, "recommendation": "CONTACT", "reasons": ["nicho"], "dataQuality": "good", "confidence": 0.9}';
-const MESSAGE_TEXT = 'Oi Maria! tudo bem? Vi que a Joalheria Teste trabalha com ouro e semijoias.';
+const MESSAGE_TEXT =
+  'Oi Maria! tudo bem? Vi que a Joalheria Teste trabalha com ouro e semijoias.\n\nFaz sentido a gente conversar?';
 
 const buildOrchestrator = () => {
   const qualification = new LeadQualificationAgent(makeLlm(QUALIFICATION_JSON));
