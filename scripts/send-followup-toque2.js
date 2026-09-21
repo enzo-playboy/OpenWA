@@ -1,28 +1,19 @@
 const dotenv = require('dotenv');
 dotenv.config();
 
+const {
+  buildToque2Message,
+  INTERVALO_MINIMO_MS,
+  JITTER_MAXIMO_MS,
+  PROTECTED_PHONES,
+  normalizePhone,
+  firstNameOf,
+} = require('./production-messages');
+const { canDispatch, recordDispatch, usedToday, DAILY_QUOTA_PER_CHIP } = require('./lib-chip-quota');
+
 const API_KEY = 'dev-admin-key';
 const SESSION_ID = '84e58e30-9c99-4eb5-8e27-c6604778d1cd';
 const BASE_URL = 'http://localhost:2785/api';
-
-// AGENTS.md (regra 2): intervalo mínimo obrigatório de 6 minutos entre envios no mesmo chip.
-const INTERVALO_MINIMO_MS = 360_000; // 360s = 6 min; com jitter fica entre 6 e 7 min.
-
-// AGENTS.md (regra 4): leads sob atendimento manual NUNCA recebem disparo automático.
-const PROTECTED_PHONES = ['5511981381228', '5511930539183'];
-
-/**
- * Follow-up do Toque 2 — regras do treinamento (PROMPT_TREINAMENTO_SDR_AGENTE.md):
- *   Regra 5: NUNCA cobrar resposta ("Conseguiu ver a mensagem anterior?", "tô aguardando" etc.).
- *            Cada follow-up traz um NOVO contexto/valor.
- *   Regra 7: a mensagem sempre termina com UMA pergunta.
- *   Regra 2: usar o primeiro nome do lead quando existir.
- */
-const GANCHOS_DE_VALOR = [
-  'Essa semana abriu uma vaga na agenda pra montar páginas e catálogos online pra empresas da região e lembrei de vocês. Faz sentido te mostrar um exemplo do resultado?',
-  'Terminamos um catálogo online pra uma empresa da região essa semana e o resultado ficou bem legal. Quer que eu te mande um exemplo pra você ver?',
-  'A agenda dessa semana abriu espaço pra montar páginas e catálogos online e lembrei de vocês. Te mostro um exemplo rápido?',
-];
 
 async function execute() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -50,9 +41,14 @@ async function execute() {
 
   // 2. Loop and send Toque 2
   for (const lead of leads) {
-    const phone = String(lead.phone || '').replace(/\D/g, '');
-    const leadName = lead.name || '';
-    const firstName = leadName ? leadName.trim().split(' ')[0] : '';
+    // Quota diária por chip (40/dia), compartilhada entre todos os scripts via lib-chip-quota.
+    if (!canDispatch(SESSION_ID)) {
+      console.log(`🛑 Quota diária de ${DAILY_QUOTA_PER_CHIP} do chip atingida (${usedToday(SESSION_ID)} hoje). Interrompendo.`);
+      break;
+    }
+
+    const phone = normalizePhone(lead.phone);
+    const firstName = firstNameOf(lead.name);
     const chatId = phone + '@c.us';
 
     // AGENTS.md (regra 4): pulando leads sob atendimento manual do usuário.
@@ -61,10 +57,9 @@ async function execute() {
       continue;
     }
 
-    // Regra 2 + Regra 5 + Regra 7: nome, valor novo, termina em pergunta. Sem cobrança.
-    const gancho = GANCHOS_DE_VALOR[Math.floor(Math.random() * GANCHOS_DE_VALOR.length)];
-    const saudacao = ['Oi', 'Opa'][Math.floor(Math.random() * 2)];
-    const text = `${saudacao}${firstName ? ' ' + firstName : ''}, tudo bem?\n\n${gancho}`;
+    // Mensagem vem da fonte única (scripts/production-messages.js), já validada por testes
+    // contra as regras do treinamento SDR (Regras 2, 5 e 7).
+    const text = buildToque2Message(lead);
 
     console.log(`🚀 Enviando Toque 2 para ${firstName || phone} (${chatId})...`);
 
@@ -79,6 +74,8 @@ async function execute() {
       });
 
       if (sendRes.ok) {
+        recordDispatch(SESSION_ID);
+        console.log(`📊 Quota do chip hoje: ${usedToday(SESSION_ID)}/${DAILY_QUOTA_PER_CHIP}`);
         // Update to current_step 2
         await fetch(supabaseUrl + '/rest/v1/leads?phone=eq.' + phone, {
           method: 'PATCH',
@@ -95,7 +92,7 @@ async function execute() {
 
     // AGENTS.md (regra 2): intervalo mínimo de 6 minutos no mesmo chip (com jitter de até 1 min).
     console.log('⏳ Aguardando intervalo mínimo de 6 minutos (regra anti-ban)...');
-    await new Promise(r => setTimeout(r, INTERVALO_MINIMO_MS + Math.random() * 60_000));
+    await new Promise(r => setTimeout(r, INTERVALO_MINIMO_MS + Math.random() * JITTER_MAXIMO_MS));
   }
 }
 

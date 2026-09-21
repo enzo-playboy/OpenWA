@@ -1,6 +1,10 @@
 const fs = require('fs');
 const dotenv = require('dotenv');
 dotenv.config({ path: 'e:/prosp/OpenWA/.env' });
+const { isProtectedPhone } = require('./lib-leads-db');
+
+// AGENTS.md (regra 2): intervalo mínimo obrigatório de 6 minutos entre envios no mesmo chip.
+const INTERVALO_MINIMO_MS = 360_000;
 
 const API_KEY = 'dev-admin-key';
 const SESSION_ID = '84e58e30-9c99-4eb5-8e27-c6604778d1cd';
@@ -46,6 +50,13 @@ async function runDisparo5Leads() {
     if (targetLeads.length >= 5) break;
 
     const lead = leads[i];
+
+    // AGENTS.md (regra 4): leads sob atendimento manual NUNCA recebem disparo automático.
+    if (isProtectedPhone(lead.phone)) {
+      console.log(`⏭️  ${lead.name || lead.phone} está sob atendimento manual, pulando.`);
+      continue;
+    }
+
     await sleep(250);
 
     try {
@@ -143,11 +154,10 @@ async function runDisparo5Leads() {
       console.error(`❌ Exceção ao enviar para ${lead.name}:`, err.message);
     }
 
-    // Delay humano entre os disparos (se não for o último)
+    // AGENTS.md (regra 2): intervalo mínimo de 6 minutos no mesmo chip (com jitter de até 1 min).
     if (index < targetLeads.length - 1) {
-      const waitSec = Math.floor(Math.random() * 10) + 15; // 15 a 25 segundos
-      console.log(`⏳ Aguardando ${waitSec} segundos (delay anti-ban) antes do próximo disparo...`);
-      await sleep(waitSec * 1000);
+      console.log('⏳ Aguardando intervalo mínimo de 6 minutos (regra anti-ban)...');
+      await sleep(INTERVALO_MINIMO_MS + Math.random() * 60_000);
     }
   }
 

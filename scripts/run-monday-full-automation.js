@@ -1,10 +1,25 @@
 const fs = require('fs');
 const dotenv = require('dotenv');
 dotenv.config({ path: 'e:/prosp/OpenWA/.env' });
+const { isProtectedPhone } = require('./lib-leads-db');
+const { canDispatch, recordDispatch, usedToday, DAILY_QUOTA_PER_CHIP } = require('./lib-chip-quota');
 
 const API_KEY = 'dev-admin-key';
-const SESSION_ID = '84e58e30-9c99-4eb5-8e27-c6604778d1cd';
 const BASE_URL = 'http://127.0.0.1:2785/api';
+
+// AGENTS.md (regra 3): chips EXCLUSIVOS por nicho.
+//   ouro/joalherias -> chip-2-iphone (Proxy TOR) | agro/irrigação -> suportew.
+const CHIPS = {
+  ouro: { sessionId: '764ba619-c986-4b7b-bea8-fa67c2845b01', name: 'chip-2-iphone (Proxy TOR)' },
+  agro: { sessionId: '84e58e30-9c99-4eb5-8e27-c6604778d1cd', name: 'suportew' },
+};
+
+/** Roteia o chip pelo nicho do lead (metadata.nicho); default ouro (funil de joalherias deste script). */
+function resolveChipForLead(lead) {
+  const raw = String(lead?.metadata?.nicho || lead?.metadata?.niche || 'ouro').toLowerCase();
+  if (raw.includes('agro') || raw.includes('irriga') || raw.includes('semente')) return CHIPS.agro;
+  return CHIPS.ouro;
+}
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -29,13 +44,23 @@ async function sendOneLead(batchName, index, total) {
 
     let targetLead = null;
     let targetJid = null;
+    let targetChip = null;
 
     for (let i = 0; i < leads.length; i++) {
       const lead = leads[i];
+
+      // AGENTS.md (regra 4): leads sob atendimento manual NUNCA recebem disparo automático.
+      if (isProtectedPhone(lead.phone)) {
+        console.log(`⏭️  ${lead.name || lead.phone} está sob atendimento manual, pulando.`);
+        continue;
+      }
+
+      const chip = resolveChipForLead(lead);
+
       await sleep(200);
 
       try {
-        const checkRes = await fetch(BASE_URL + '/sessions/' + SESSION_ID + '/contacts/check/' + lead.phone, {
+        const checkRes = await fetch(BASE_URL + '/sessions/' + chip.sessionId + '/contacts/check/' + lead.phone, {
           headers: { 'x-api-key': API_KEY }
         });
         if (!checkRes.ok) continue;
@@ -43,7 +68,8 @@ async function sendOneLead(batchName, index, total) {
         if (result.exists && result.whatsappId) {
           targetLead = lead;
           targetJid = result.whatsappId;
-          console.log(`✅ [${batchName}] Encontrado: ${lead.name} (${lead.phone}) -> JID: ${targetJid}`);
+          targetChip = chip;
+          console.log(`✅ [${batchName}] Encontrado: ${lead.name} (${lead.phone}) -> JID: ${targetJid} [chip: ${chip.name}]`);
           break;
         }
       } catch (e) {
@@ -62,11 +88,21 @@ async function sendOneLead(batchName, index, total) {
     const cidade = rawData.personCity || rawData.city || 'sua cidade';
     const estado = rawData.personState || rawData.state || '';
 
-    const text = `Oi! Tudo bem?\n\nPesquisei por joalherias no Google e encontrei o perfil da ${leadName}.\n\nVocês já têm um site ou catálogo online com os modelos atualizados pra mandar pros clientes, ou fazem o atendimento só direto no WhatsApp?`;
+    // Mensagem por nicho (o texto precisa bater com o chip exclusivo da regra 3).
+    const isAgro = targetChip === CHIPS.agro;
+    const text = isAgro
+      ? `Oi! Tudo bem?\n\nPesquisei por empresas de irrigação e soluções hídricas no Google e encontrei o perfil da ${leadName}.\n\nVocês já têm um site ou catálogo online pra apresentar os projetos e orçamentos, ou o atendimento é só direto no WhatsApp?`
+      : `Oi! Tudo bem?\n\nPesquisei por joalherias no Google e encontrei o perfil da ${leadName}.\n\nVocês já têm um site ou catálogo online com os modelos atualizados pra mandar pros clientes, ou fazem o atendimento só direto no WhatsApp?`;
 
-    console.log(`🚀 [${batchName}] Enviando para: ${leadName} (${targetJid})...`);
+    // Quota diária por chip (40/dia), compartilhada entre todos os scripts via lib-chip-quota.
+    if (!canDispatch(targetChip.sessionId)) {
+      console.log(`🛑 [${batchName}] Quota diária de ${DAILY_QUOTA_PER_CHIP} do chip ${targetChip.name} atingida (${usedToday(targetChip.sessionId)} hoje). Interrompendo lote.`);
+      return false;
+    }
 
-    const sendRes = await fetch(BASE_URL + '/sessions/' + SESSION_ID + '/messages/send-text', {
+    console.log(`🚀 [${batchName}] Enviando para: ${leadName} (${targetJid}) via ${targetChip.name}...`);
+
+    const sendRes = await fetch(BASE_URL + '/sessions/' + targetChip.sessionId + '/messages/send-text', {
       method: 'POST',
       headers: {
         'x-api-key': API_KEY,
@@ -83,6 +119,9 @@ async function sendOneLead(batchName, index, total) {
     console.log(`STATUS: ${status}`);
 
     if (sendRes.ok) {
+      recordDispatch(targetChip.sessionId);
+      console.log(`📊 Quota do chip ${targetChip.name} hoje: ${usedToday(targetChip.sessionId)}/${DAILY_QUOTA_PER_CHIP}`);
+
       // Atualiza Supabase
       await fetch(supabaseUrl + '/rest/v1/leads?id=eq.' + targetLead.id, {
         method: 'PATCH',
@@ -123,6 +162,10 @@ async function sendOneLead(batchName, index, total) {
 }
 
 async function runBatch(batchName, count, minDelayMin, maxDelayMin) {
+  // AGENTS.md (regra 2): intervalo mínimo obrigatório de 6 minutos entre envios no mesmo chip.
+  if (minDelayMin < 6) minDelayMin = 6;
+  if (maxDelayMin < minDelayMin) maxDelayMin = minDelayMin;
+
   console.log(`\n========================================`);
   console.log(`🚀 INICIANDO ${batchName.toUpperCase()} (${count} Disparos | Delay Anti-Ban: ${minDelayMin}-${maxDelayMin} min)`);
   console.log(`========================================\n`);
@@ -165,7 +208,7 @@ async function startFullMondayAutomation() {
 
   // 1. Aguarda 08:00 para LOTE 1 (Manhã)
   await waitUntilTime(8, 0);
-  await runBatch('Lote 1 (Manhã)', 12, 5, 12);
+  await runBatch('Lote 1 (Manhã)', 12, 6, 12);
 
   // 2. Aguarda 13:30 para LOTE 2 (Tarde 1)
   await waitUntilTime(13, 30);

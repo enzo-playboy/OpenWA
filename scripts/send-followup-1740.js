@@ -10,7 +10,8 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function sendFollowup() {
   const targetJid = '556599719591@c.us'; // Master Jóias
-  const text = 'Conseguiu dar uma olhada nos links por aí? Me avisa se tiver qualquer dúvida!';
+  // Treinamento SDR (Regras 5 e 7): follow-up com valor novo, sem cobrança, terminando com pergunta.
+  const text = 'Oi! Separei um exemplo de catálogo online pra você ver como ficaria na Master Jóias. Quer dar uma olhada?';
 
   // Calcular milissegundos até as 17:40
   const now = new Date();
